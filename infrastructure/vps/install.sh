@@ -188,8 +188,9 @@ phase3_runtime_engines() {
     # 1. Node.js 22 LTS & pnpm
     if ! command -v node &>/dev/null || [[ $(node -v | cut -d'.' -f1) != "v22" ]]; then
         log_info "Installing Node.js 22.x LTS..."
+        apt-mark unhold nodejs 2>/dev/null || true
         curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-        apt-get install -y nodejs
+        apt-get install -y --allow-change-held-packages nodejs || apt-get install -y nodejs
     fi
     npm install -g pnpm pm2
     log_success "Node.js $(node -v), npm $(npm -v), pnpm $(pnpm -v) installed."
@@ -209,27 +210,35 @@ phase3_runtime_engines() {
     systemctl enable redis-server >/dev/null 2>&1 || true
     systemctl restart redis-server
 
-    # 3. MongoDB 7.0 Community Edition
+    # 3. MongoDB 8.0 / 7.0 Community Edition
     log_info "Configuring MongoDB database engine..."
     if ! command -v mongod &>/dev/null; then
-        curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
-            gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor --yes
-        
-        # Use jammy repository as trusted LTS target for Ubuntu 24.04 noble if noble repo pending
         UBUNTU_CODENAME=$(lsb_release -cs)
         if [[ "${UBUNTU_CODENAME}" == "noble" ]]; then
-            REPO_TARGET="jammy"
+            curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | \
+                gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor --yes
+            echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.0 multiverse" | \
+                tee /etc/apt/sources.list.d/mongodb-org-8.0.list
+            apt-get update -y
+            apt-get install -y mongodb-org || {
+                log_warn "Standard mongodb-org 8.0 installation warning. Trying 7.0 fallback..."
+                curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
+                    gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor --yes
+                echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | \
+                    tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+                apt-get update -y
+                apt-get install -y mongodb-org || true
+            }
         else
-            REPO_TARGET="${UBUNTU_CODENAME}"
+            curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
+                gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor --yes
+            echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu ${UBUNTU_CODENAME}/mongodb-org/7.0 multiverse" | \
+                tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+            apt-get update -y
+            apt-get install -y mongodb-org || true
         fi
-
-        echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu ${REPO_TARGET}/mongodb-org/7.0 multiverse" | \
-            tee /etc/apt/sources.list.d/mongodb-org-7.0.list
-        apt-get update -y
-        apt-get install -y mongodb-org || {
-            log_warn "Standard mongodb-org package installation had warnings, checking daemon status..."
-        }
     fi
+    systemctl daemon-reload >/dev/null 2>&1 || true
     systemctl enable mongod >/dev/null 2>&1 || true
     systemctl start mongod || true
 
@@ -290,10 +299,10 @@ phase4_app_setup() {
     # Install dependencies & build
     log_info "Installing monorepo dependencies via pnpm..."
     chown -R "${APP_USER}:${APP_USER}" "${INSTALL_DIR}"
-    sudo -u "${APP_USER}" pnpm install
+    sudo -u "${APP_USER}" env "PATH=$PATH" pnpm install
 
     log_info "Compiling all TypeScript packages, frontend, backend, gateway, and worker..."
-    sudo -u "${APP_USER}" pnpm run build
+    sudo -u "${APP_USER}" env "PATH=$PATH" pnpm run build
 
     # Create micro-app hosting directory
     mkdir -p "${INSTALL_DIR}/deployments"
@@ -369,7 +378,7 @@ phase6_pm2_processes() {
 
     # Save process list and register systemd service
     pm2 save
-    env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u root --hp /root >/dev/null 2>&1 || true
+    pm2 startup systemd -u root --hp /root >/dev/null 2>&1 || true
 
     log_success "Phase 6 PM2 process management configured."
 }
