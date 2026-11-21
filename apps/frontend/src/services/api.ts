@@ -45,6 +45,15 @@ export async function apiRequest<T = any>(
     const data = await response.json().catch(() => null);
 
     if (!response.ok) {
+      // If unauthorized on admin endpoint, clear expired session and redirect to login
+      if (response.status === 401 && (effectiveTokenType === 'admin' || endpoint.startsWith('/api/v1/admin'))) {
+        localStorage.removeItem('arjun_admin_token');
+        localStorage.removeItem('arjun_admin_user');
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+          window.location.href = '/login';
+        }
+      }
+
       const errorMsg = data?.error?.message || data?.message || `Request failed with status ${response.status}`;
       return {
         success: false,
