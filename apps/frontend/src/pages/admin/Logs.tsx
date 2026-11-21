@@ -24,6 +24,15 @@ export const AdminLogs: React.FC = () => {
     window.open('/api/v1/admin/logs/export', '_blank');
   };
 
+  const formatCustomerIdentifier = (customerId: any, keyPrefix?: string) => {
+    if (keyPrefix) return keyPrefix;
+    if (!customerId) return 'ANONYMOUS';
+    if (typeof customerId === 'object') {
+      return customerId.username || (customerId._id ? `ID: ${String(customerId._id).substring(0, 8)}` : 'CLIENT');
+    }
+    return `ID: ${String(customerId).substring(0, 8)}`;
+  };
+
   return (
     <div className="p-8 lg:p-10 space-y-10 selection:bg-[#EF4444] selection:text-white">
       {/* Editorial Header */}
@@ -116,7 +125,7 @@ export const AdminLogs: React.FC = () => {
                       <span className="text-white">{l.routePath || l.path}</span>
                     </td>
                     <td className="py-3.5 px-6 text-[#A3A3A3]">
-                      {l.keyPrefix || (l.customerId ? `ID: ${l.customerId.substring(0, 8)}` : 'ANONYMOUS')}
+                      {formatCustomerIdentifier(l.customerId, l.keyPrefix)}
                     </td>
                     <td className="py-3.5 px-6">
                       <span

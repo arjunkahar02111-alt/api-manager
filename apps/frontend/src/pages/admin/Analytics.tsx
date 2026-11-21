@@ -102,7 +102,7 @@ export const AdminAnalytics: React.FC = () => {
                   }`}
                 />
                 <span className="text-[9px] text-[#737373] font-mono mt-1 uppercase">
-                  {item.date.substring(5)}
+                  {String(item.date || '').substring(5)}
                 </span>
               </div>
             );

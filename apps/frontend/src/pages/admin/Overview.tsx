@@ -229,8 +229,8 @@ export const AdminOverview: React.FC = () => {
                       : 'bg-white hover:bg-[#EF4444] border border-[#333333]'
                   }`}
                 />
-                <span className="text-[10px] text-[#A3A3A3] font-mono mt-1 uppercase">
-                  {item.date.substring(5)}
+                <span className="text-[10px] text-[#A39BAD] font-mono mt-1 uppercase">
+                  {String(item.date || '').substring(5)}
                 </span>
               </div>
             );
