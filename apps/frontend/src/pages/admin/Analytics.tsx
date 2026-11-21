@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../services/api';
+import { Download, Activity, Zap, ShieldAlert } from 'lucide-react';
 
 export const AdminAnalytics: React.FC = () => {
   const [trends, setTrends] = useState<any[]>([]);
+  const [performance, setPerformance] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchAnalytics();
+    fetchPerformance();
   }, []);
 
   const fetchAnalytics = async () => {
@@ -14,6 +17,42 @@ export const AdminAnalytics: React.FC = () => {
     const res = await apiRequest('/api/v1/admin/analytics/trends?days=14', {}, 'admin');
     if (res.success) setTrends(res.data || []);
     setLoading(false);
+  };
+
+  const fetchPerformance = async () => {
+    const res = await apiRequest('/api/v1/admin/analytics/performance?hours=24', {}, 'admin');
+    if (res.success) setPerformance(res.data || null);
+  };
+
+  const handleExportCsv = async () => {
+    const adminToken = localStorage.getItem('arjun_admin_token');
+    const response = await fetch('/api/v1/admin/analytics/export?days=30', {
+      headers: {
+        ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+      },
+    });
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `analytics-report-${new Date().toISOString().substring(0, 10)}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleExportJson = () => {
+    const payload = {
+      exportTimestamp: new Date().toISOString(),
+      performance,
+      dailyTrends: trends,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `analytics-report-${new Date().toISOString().substring(0, 10)}.json`;
+    a.click();
+    window.URL.revokeObjectURL(url);
   };
 
   const totalRequests = trends.reduce((acc, curr) => acc + curr.requests, 0);
@@ -36,12 +75,32 @@ export const AdminAnalytics: React.FC = () => {
             ANALYTICS
           </h1>
           <p className="text-xs text-[#A3A3A3] font-mono uppercase mt-2">
-            14-DAY AGGREGATED METRICS, THROUGHPUT PATTERNS & SUCCESS RATES
+            14-DAY AGGREGATED METRICS, THROUGHPUT PATTERNS & LATENCY PERCENTILES
           </p>
+        </div>
+
+        {/* Action Buttons for Export */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleExportCsv}
+            className="flex items-center gap-2 bg-[#121212] border-2 border-[#262626] hover:border-white text-[#A3A3A3] hover:text-white px-4 py-2 font-mono text-xs uppercase tracking-wider transition-colors rounded-none"
+            title="Download 30-Day Trends in CSV Format"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>[ EXPORT CSV ]</span>
+          </button>
+          <button
+            onClick={handleExportJson}
+            className="flex items-center gap-2 bg-[#121212] border-2 border-[#262626] hover:border-white text-[#A3A3A3] hover:text-white px-4 py-2 font-mono text-xs uppercase tracking-wider transition-colors rounded-none"
+            title="Download Performance Snapshot in JSON Format"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>[ EXPORT JSON ]</span>
+          </button>
         </div>
       </div>
 
-      {/* VoiceBox Elevated Stat Cards */}
+      {/* Primary Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-mono">
         <div className="bg-[#121212] border-t-4 border-t-[#EF4444] border-x-2 border-b-2 border-[#262626] p-6 rounded-none">
           <span className="text-[11px] font-bold text-[#A3A3A3] uppercase tracking-wider">
@@ -73,6 +132,35 @@ export const AdminAnalytics: React.FC = () => {
           <p className="text-[10px] text-[#737373] mt-2 uppercase">RATE LIMITS / UPSTREAM FAILS</p>
         </div>
       </div>
+
+      {/* Latency Percentiles & Telemetry Breakdown (P50, P95, P99, RPS) */}
+      {performance && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 font-mono">
+          <div className="bg-[#100D17] border-2 border-[#1F1930] p-4">
+            <span className="text-[10px] text-[#A39BAD] uppercase">Median Latency (P50)</span>
+            <div className="text-2xl font-bold text-white mt-1">{performance.p50LatencyMs}ms</div>
+            <span className="text-[9px] text-[#706685]">50% of requests faster</span>
+          </div>
+
+          <div className="bg-[#100D17] border-2 border-[#1F1930] p-4">
+            <span className="text-[10px] text-[#A39BAD] uppercase">Tail Latency (P95)</span>
+            <div className="text-2xl font-bold text-[#F59E0B] mt-1">{performance.p95LatencyMs}ms</div>
+            <span className="text-[9px] text-[#706685]">95th percentile SLA</span>
+          </div>
+
+          <div className="bg-[#100D17] border-2 border-[#1F1930] p-4">
+            <span className="text-[10px] text-[#A39BAD] uppercase">Max Peak (P99)</span>
+            <div className="text-2xl font-bold text-[#EF4444] mt-1">{performance.p99LatencyMs}ms</div>
+            <span className="text-[9px] text-[#706685]">99th percentile spike</span>
+          </div>
+
+          <div className="bg-[#100D17] border-2 border-[#1F1930] p-4">
+            <span className="text-[10px] text-[#A39BAD] uppercase">Real-Time Throughput</span>
+            <div className="text-2xl font-bold text-[#10B981] mt-1">{performance.rps} req/s</div>
+            <span className="text-[9px] text-[#706685]">24h average load</span>
+          </div>
+        </div>
+      )}
 
       {/* 14-Day Throughput Bar Visualizer */}
       <div className="bg-[#121212] border-2 border-[#262626] p-6 lg:p-8 rounded-none">

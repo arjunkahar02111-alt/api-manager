@@ -23,3 +23,7 @@ export * from './UserSession.js';
 export * from './HostingDeployment.js';
 export * from './SecurityNotification.js';
 export * from './Announcement.js';
+export * from './Incident.js';
+export * from './Alert.js';
+export * from './ResponseConfig.js';
+export * from './AutomationAuditLog.js';

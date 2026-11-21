@@ -496,4 +496,69 @@ export class CustomerService {
       expiresAt: customer.expiresAt,
     };
   }
+
+  /**
+   * Bulk suspend multiple customers atomically
+   */
+  static async bulkSuspend(customerIds: string[], adminId: string, adminUsername: string, sourceIp: string) {
+    let affected = 0;
+    for (const id of customerIds) {
+      try {
+        await this.suspendCustomer(id, adminId, adminUsername, sourceIp);
+        affected++;
+      } catch {}
+    }
+    SocketService.broadcastToAdmin('client:bulk_updated', { action: 'suspend', affected });
+    return { affected, total: customerIds.length };
+  }
+
+  /**
+   * Bulk activate multiple customers atomically
+   */
+  static async bulkActivate(customerIds: string[], adminId: string, adminUsername: string, sourceIp: string) {
+    let affected = 0;
+    for (const id of customerIds) {
+      try {
+        await this.activateCustomer(id, adminId, adminUsername, sourceIp);
+        affected++;
+      } catch {}
+    }
+    SocketService.broadcastToAdmin('client:bulk_updated', { action: 'activate', affected });
+    return { affected, total: customerIds.length };
+  }
+
+  /**
+   * Bulk renew validity for multiple customers
+   */
+  static async bulkRenew(customerIds: string[], additionalDays: number, adminId: string, adminUsername: string, sourceIp: string) {
+    let affected = 0;
+    for (const id of customerIds) {
+      try {
+        await this.renewCustomer(id, additionalDays, adminId, adminUsername, sourceIp);
+        affected++;
+      } catch {}
+    }
+    SocketService.broadcastToAdmin('client:bulk_updated', { action: 'renew', affected });
+    return { affected, total: customerIds.length };
+  }
+
+  /**
+   * Export all customer records to CSV string
+   */
+  static async exportCustomersCsv(): Promise<string> {
+    const customers = await Customer.find({ status: { $ne: 'deleted' } }).sort({ createdAt: -1 }).lean();
+    const customerIds = customers.map((c) => c._id);
+    const keys = await ApiKey.find({ customerId: { $in: customerIds }, status: 'active' }).lean();
+    const keyMap = new Map(keys.map((k) => [k.customerId.toString(), k.keyPrefix]));
+
+    const header = 'Username,FullName,Email,KeyPrefix,Status,DailyLimit,MonthlyLimit,LifetimeLimit,ExpiresAt,CreatedBy,CreatedAt\n';
+    const rows = customers.map((c) => {
+      const prefix = keyMap.get(c._id.toString()) || 'none';
+      const expires = c.expiresAt ? new Date(c.expiresAt).toISOString() : 'none';
+      const created = c.createdAt ? new Date(c.createdAt).toISOString() : 'none';
+      return `"${c.username}","${c.fullName}","${c.email}","${prefix}","${c.status}",${c.dailyRequestLimit},${c.monthlyRequestLimit},${c.lifetimeRequestLimit},"${expires}","${c.createdBy}","${created}"`;
+    }).join('\n');
+
+    return header + rows;
+  }
 }

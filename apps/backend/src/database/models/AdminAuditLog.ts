@@ -16,6 +16,9 @@ const AdminAuditLogSchema = new Schema<AdminAuditLogDocument>(
     userAgent: { type: String },
     result: { type: String, enum: ['success', 'failure'], default: 'success' },
     errorMessage: { type: String },
+    correlationId: { type: String, index: true },
+    previousHash: { type: String },
+    integrityHash: { type: String },
     createdAt: { type: Date, default: Date.now, index: true },
   },
   { timestamps: false }

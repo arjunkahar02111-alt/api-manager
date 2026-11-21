@@ -19,6 +19,7 @@ import {
   Settings,
   Shield,
   Lock,
+  Download,
 } from 'lucide-react';
 
 const getPublicGatewayBaseUrl = () => {
@@ -46,6 +47,60 @@ export const AdminCustomers: React.FC = () => {
   // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedIds(customers.map((c) => c._id));
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
+  const handleSelectRow = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleBulkAction = async (action: 'suspend' | 'activate' | 'renew') => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`Apply bulk ${action} to ${selectedIds.length} selected client(s)?`)) return;
+
+    setActionLoading(true);
+    const endpoint = `/api/v1/admin/customers/bulk-${action}`;
+    const body: any = { customerIds: selectedIds };
+    if (action === 'renew') body.additionalDays = 30;
+
+    await apiRequest(
+      endpoint,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+      'admin'
+    );
+
+    setSelectedIds([]);
+    setActionLoading(false);
+    fetchCustomers();
+  };
+
+  const handleExportCsv = async () => {
+    const adminToken = localStorage.getItem('arjun_admin_token');
+    const res = await fetch('/api/v1/admin/customers/export', {
+      headers: {
+        ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+      },
+    });
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `clients-export-${new Date().toISOString().substring(0, 10)}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
 
   const [createdKeyPacket, setCreatedKeyPacket] = useState<any | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
@@ -390,17 +445,60 @@ export const AdminCustomers: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setShowCreateModal(true);
-            setFormError(null);
-          }}
-          className="self-start sm:self-auto bg-white text-black border-2 border-white hover:bg-[#EF4444] hover:border-[#EF4444] hover:text-white font-mono font-bold px-5 py-2.5 text-xs uppercase tracking-widest transition-colors flex items-center gap-2 rounded-none"
-        >
-          <Plus className="w-4 h-4" />
-          <span>[ + GENERATE NEW CLIENT KEY ]</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleExportCsv}
+            className="bg-[#121212] border-2 border-[#262626] hover:border-white text-[#A3A3A3] hover:text-white font-mono px-4 py-2.5 text-xs uppercase tracking-wider transition-colors rounded-none flex items-center gap-2"
+            title="Export all client records to CSV"
+          >
+            <Download className="w-4 h-4" />
+            <span>[ EXPORT CSV ]</span>
+          </button>
+          <button
+            onClick={() => {
+              setShowCreateModal(true);
+              setFormError(null);
+            }}
+            className="self-start sm:self-auto bg-white text-black border-2 border-white hover:bg-[#EF4444] hover:border-[#EF4444] hover:text-white font-mono font-bold px-5 py-2.5 text-xs uppercase tracking-widest transition-colors flex items-center gap-2 rounded-none"
+          >
+            <Plus className="w-4 h-4" />
+            <span>[ + GENERATE NEW CLIENT KEY ]</span>
+          </button>
+        </div>
       </div>
+
+      {/* BULK ACTION BAR */}
+      {selectedIds.length > 0 && (
+        <div className="bg-[#1F1930] border-2 border-[#A020F0] p-4 flex flex-col sm:flex-row items-center justify-between gap-4 font-mono">
+          <div className="flex items-center gap-2 text-xs text-white">
+            <span className="w-2 h-2 rounded-full bg-[#A020F0] animate-pulse" />
+            <span className="font-bold">{selectedIds.length} CLIENT(S) SELECTED</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => handleBulkAction('suspend')}
+              disabled={actionLoading}
+              className="px-3 py-1.5 bg-[#450A0A] border border-[#EF4444] text-[#F87171] hover:bg-[#EF4444] hover:text-white text-xs uppercase font-bold transition-colors rounded-none"
+            >
+              [ BULK SUSPEND ]
+            </button>
+            <button
+              onClick={() => handleBulkAction('activate')}
+              disabled={actionLoading}
+              className="px-3 py-1.5 bg-[#052E16] border border-[#16A34A] text-[#22C55E] hover:bg-[#16A34A] hover:text-white text-xs uppercase font-bold transition-colors rounded-none"
+            >
+              [ BULK ACTIVATE ]
+            </button>
+            <button
+              onClick={() => handleBulkAction('renew')}
+              disabled={actionLoading}
+              className="px-3 py-1.5 bg-[#121212] border border-white text-white hover:bg-white hover:text-black text-xs uppercase font-bold transition-colors rounded-none"
+            >
+              [ BULK RENEW (+30d) ]
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* SEARCH AND FILTERS */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-[#121212] p-4 border-2 border-[#262626] rounded-none">
@@ -444,6 +542,14 @@ export const AdminCustomers: React.FC = () => {
           <table className="w-full text-left text-xs font-mono">
             <thead className="bg-[#0A0A0A] text-[#A3A3A3] border-b-2 border-[#262626] uppercase text-[11px] tracking-wider">
               <tr>
+                <th className="px-4 py-4 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    onChange={handleSelectAll}
+                    checked={selectedIds.length === customers.length && customers.length > 0}
+                    className="accent-[#A020F0] cursor-pointer"
+                  />
+                </th>
                 <th className="px-6 py-4 font-bold">Client Name</th>
                 <th className="px-6 py-4 font-bold">Key Prefix</th>
                 <th className="px-6 py-4 font-bold">Custom Limits</th>
@@ -456,14 +562,14 @@ export const AdminCustomers: React.FC = () => {
             <tbody className="divide-y divide-[#262626]">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-[#A3A3A3] font-mono uppercase tracking-widest">
+                  <td colSpan={8} className="text-center py-12 text-[#A3A3A3] font-mono uppercase tracking-widest">
                     <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-white" />
                     Loading client keys...
                   </td>
                 </tr>
               ) : customers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-[#737373] uppercase tracking-wider font-mono">
+                  <td colSpan={8} className="text-center py-12 text-[#737373] uppercase tracking-wider font-mono">
                     No client keys created yet. Click "+ GENERATE NEW CLIENT KEY" to issue your first customizable key!
                   </td>
                 </tr>
@@ -471,9 +577,18 @@ export const AdminCustomers: React.FC = () => {
                 customers.map((c) => {
                   const isSuspended = c.status === 'suspended';
                   const isExpired = c.status === 'expired' || new Date(c.expiresAt).getTime() < Date.now();
+                  const isSelected = selectedIds.includes(c._id);
 
                   return (
-                    <tr key={c._id} className="hover:bg-[#181818] transition-colors">
+                    <tr key={c._id} className={`hover:bg-[#181818] transition-colors ${isSelected ? 'bg-[#181224]' : ''}`}>
+                      <td className="px-4 py-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleSelectRow(c._id)}
+                          className="accent-[#A020F0] cursor-pointer"
+                        />
+                      </td>
                       <td className="px-6 py-4">
                         <div className="font-bold text-white text-sm uppercase">{c.fullName || c.username}</div>
                         <div className="flex items-center gap-1.5 mt-0.5">

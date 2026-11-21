@@ -164,6 +164,27 @@ export const AdminAnnouncements: React.FC = () => {
   const activeCount = announcements.filter((a) => a.status === 'published').length;
   const ackRequiredCount = announcements.filter((a) => a.acknowledgmentRequired).length;
 
+  const handleEmergencyBroadcastPrompt = async () => {
+    const title = prompt('Enter EMERGENCY Announcement Title (will broadcast to all routes immediately):');
+    if (!title) return;
+    const message = prompt('Enter emergency message details:');
+    if (!message) return;
+
+    const res = await apiRequest(
+      '/api/v1/admin/announcements/emergency',
+      {
+        method: 'POST',
+        body: JSON.stringify({ title, message }),
+      },
+      'admin'
+    );
+
+    if (res.success) {
+      alert('Emergency announcement published live across all API gateway routes.');
+      fetchAnnouncements();
+    }
+  };
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 font-mono select-none">
       {/* Header */}
@@ -180,16 +201,26 @@ export const AdminAnnouncements: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            resetForm();
-            setModalOpen(true);
-          }}
-          className="px-4 py-2.5 bg-[#A020F0] hover:bg-[#7B2FFF] text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2 shadow-[0_0_15px_rgba(160,32,240,0.3)] transition-all"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Announcement</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleEmergencyBroadcastPrompt}
+            className="px-3.5 py-2.5 bg-[#450A0A] hover:bg-[#EF4444] text-[#F87171] hover:text-white border border-[#EF4444] text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all"
+            title="One-click critical broadcast to all live routes"
+          >
+            <AlertTriangle className="w-4 h-4" />
+            <span>Emergency Broadcast</span>
+          </button>
+          <button
+            onClick={() => {
+              resetForm();
+              setModalOpen(true);
+            }}
+            className="px-4 py-2.5 bg-[#A020F0] hover:bg-[#7B2FFF] text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2 shadow-[0_0_15px_rgba(160,32,240,0.3)] transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Announcement</span>
+          </button>
+        </div>
       </div>
 
       {/* Metric Cards */}

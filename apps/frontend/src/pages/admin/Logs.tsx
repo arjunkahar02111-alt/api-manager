@@ -1,27 +1,43 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../services/api';
-import { Download, RefreshCw, Loader2 } from 'lucide-react';
+import { Modal } from '../../components/Modal';
+import { Download, RefreshCw, Loader2, Search, Eye, X } from 'lucide-react';
 
 export const AdminLogs: React.FC = () => {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusCode, setStatusCode] = useState('');
+  const [search, setSearch] = useState('');
+  const [selectedLog, setSelectedLog] = useState<any | null>(null);
 
   useEffect(() => {
     fetchLogs();
-  }, [statusCode]);
+  }, [statusCode, search]);
 
   const fetchLogs = async () => {
     setLoading(true);
     let url = `/api/v1/admin/logs?page=1&limit=50`;
     if (statusCode) url += `&statusCode=${statusCode}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
     const res = await apiRequest(url, {}, 'admin');
     if (res.success) setLogs(res.data || []);
     setLoading(false);
   };
 
-  const handleExportCsv = () => {
-    window.open('/api/v1/admin/logs/export', '_blank');
+  const handleExportCsv = async () => {
+    const adminToken = localStorage.getItem('arjun_admin_token');
+    const res = await fetch('/api/v1/admin/logs/export', {
+      headers: {
+        ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+      },
+    });
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `gateway-logs-${new Date().toISOString().substring(0, 10)}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
   };
 
   const formatCustomerIdentifier = (customerId: any, keyPrefix?: string) => {
@@ -71,7 +87,18 @@ export const AdminLogs: React.FC = () => {
       </div>
 
       {/* Filter Bar */}
-      <div className="flex gap-3 font-mono">
+      <div className="flex flex-col sm:flex-row gap-3 font-mono">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-[#737373]" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="SEARCH BY REQUEST ID, IP ADDRESS, OR ENDPOINT PATH..."
+            className="w-full bg-[#121212] border-2 border-[#333333] focus:border-white text-xs text-white placeholder-[#737373] uppercase pl-10 pr-4 py-2.5 rounded-none"
+          />
+        </div>
+
         <select
           value={statusCode}
           onChange={(e) => setStatusCode(e.target.value)}
@@ -101,19 +128,20 @@ export const AdminLogs: React.FC = () => {
                 <th className="py-4 px-6 font-bold">Bytes</th>
                 <th className="py-4 px-6 font-bold">IP Address</th>
                 <th className="py-4 px-6 font-bold">Timestamp</th>
+                <th className="py-4 px-6 font-bold text-right">Inspect</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#262626]">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-[#A3A3A3] font-mono text-xs uppercase tracking-widest">
+                  <td colSpan={8} className="py-12 text-center text-[#A3A3A3] font-mono text-xs uppercase tracking-widest">
                     <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-white" />
                     STREAMING LIVE LOGS...
                   </td>
                 </tr>
               ) : logs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-[#737373] uppercase tracking-wider">
+                  <td colSpan={8} className="py-12 text-center text-[#737373] uppercase tracking-wider">
                     NO REQUEST LOGS RECORDED YET.
                   </td>
                 </tr>
@@ -122,7 +150,7 @@ export const AdminLogs: React.FC = () => {
                   <tr key={l._id} className="hover:bg-[#181818] transition-colors">
                     <td className="py-3.5 px-6 font-bold">
                       <span className="text-[#EF4444] mr-2">[{l.method}]</span>
-                      <span className="text-white">{l.routePath || l.path}</span>
+                      <span className="text-white">{l.routePath || l.endpoint || l.path}</span>
                     </td>
                     <td className="py-3.5 px-6 text-[#A3A3A3]">
                       {formatCustomerIdentifier(l.customerId, l.keyPrefix)}
@@ -144,9 +172,18 @@ export const AdminLogs: React.FC = () => {
                     <td className="py-3.5 px-6 text-[#A3A3A3]">
                       {l.responseBytes ? `${(l.responseBytes / 1024).toFixed(1)} KB` : '0 B'}
                     </td>
-                    <td className="py-3.5 px-6 text-[#A3A3A3]">{l.ipAddress || '127.0.0.1'}</td>
+                    <td className="py-3.5 px-6 text-[#A3A3A3]">{l.ipAddress || l.sourceIp || '127.0.0.1'}</td>
                     <td className="py-3.5 px-6 text-[#737373]">
-                      {new Date(l.createdAt).toLocaleTimeString()}
+                      {new Date(l.createdAt || l.timestamp).toLocaleTimeString()}
+                    </td>
+                    <td className="py-3.5 px-6 text-right">
+                      <button
+                        onClick={() => setSelectedLog(l)}
+                        className="p-1 text-[#A3A3A3] hover:text-white border border-[#333333] hover:border-white transition-colors"
+                        title="Deep Inspect Request"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -155,6 +192,61 @@ export const AdminLogs: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Deep Request Investigation Modal */}
+      {selectedLog && (
+        <Modal
+          isOpen={!!selectedLog}
+          onClose={() => setSelectedLog(null)}
+          title="DEEP REQUEST INVESTIGATION"
+        >
+          <div className="space-y-4 font-mono text-xs">
+            <div className="p-4 bg-[#0A0A0A] border-2 border-[#262626] space-y-2">
+              <div className="flex justify-between items-center text-[#737373]">
+                <span>REQUEST ID:</span>
+                <span className="text-white font-bold">{selectedLog.requestId || selectedLog._id}</span>
+              </div>
+              <div className="flex justify-between items-center text-[#737373]">
+                <span>ROUTE & METHOD:</span>
+                <span className="text-[#EF4444] font-bold">[{selectedLog.method}] {selectedLog.routePath || selectedLog.endpoint || selectedLog.path}</span>
+              </div>
+              <div className="flex justify-between items-center text-[#737373]">
+                <span>HTTP STATUS:</span>
+                <span className={`font-bold ${selectedLog.statusCode < 300 ? 'text-[#22C55E]' : 'text-[#EF4444]'}`}>{selectedLog.statusCode}</span>
+              </div>
+              <div className="flex justify-between items-center text-[#737373]">
+                <span>TOTAL LATENCY:</span>
+                <span className="text-white font-bold">{selectedLog.durationMs}ms</span>
+              </div>
+              <div className="flex justify-between items-center text-[#737373]">
+                <span>SOURCE IP:</span>
+                <span className="text-[#A3A3A3] font-bold">{selectedLog.ipAddress || selectedLog.sourceIp || '127.0.0.1'}</span>
+              </div>
+              <div className="flex justify-between items-center text-[#737373]">
+                <span>CLIENT / KEY PREFIX:</span>
+                <span className="text-white font-bold">{formatCustomerIdentifier(selectedLog.customerId, selectedLog.keyPrefix)}</span>
+              </div>
+              <div className="flex justify-between items-center text-[#737373]">
+                <span>TIMESTAMP:</span>
+                <span className="text-[#A3A3A3]">{new Date(selectedLog.createdAt || selectedLog.timestamp).toISOString()}</span>
+              </div>
+              {selectedLog.userAgent && (
+                <div className="pt-2 border-t border-[#262626] text-[#737373]">
+                  <span className="block mb-1">USER AGENT:</span>
+                  <span className="text-[11px] text-[#A3A3A3] break-all">{selectedLog.userAgent}</span>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setSelectedLog(null)}
+              className="w-full bg-white text-black hover:bg-[#EF4444] hover:text-white border-2 border-white font-mono font-bold py-2.5 text-xs uppercase tracking-widest transition-colors rounded-none"
+            >
+              CLOSE INVESTIGATION
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

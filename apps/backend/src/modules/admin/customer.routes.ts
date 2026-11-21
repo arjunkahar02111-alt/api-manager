@@ -74,6 +74,60 @@ router.post('/', async (req: AuthenticatedAdminRequest, res, next) => {
   }
 });
 
+router.get('/export', async (_req, res, next) => {
+  try {
+    const csv = await CustomerService.exportCustomersCsv();
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="customers-export.csv"');
+    return res.send(csv);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/bulk-suspend', async (req: AuthenticatedAdminRequest, res, next) => {
+  try {
+    const { customerIds } = req.body || {};
+    if (!Array.isArray(customerIds) || customerIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'customerIds array required' });
+    }
+    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+    const result = await CustomerService.bulkSuspend(customerIds, req.admin!.id, req.admin!.username, clientIp);
+    return sendSuccess(res, result, `Suspended ${result.affected} customer accounts`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/bulk-activate', async (req: AuthenticatedAdminRequest, res, next) => {
+  try {
+    const { customerIds } = req.body || {};
+    if (!Array.isArray(customerIds) || customerIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'customerIds array required' });
+    }
+    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+    const result = await CustomerService.bulkActivate(customerIds, req.admin!.id, req.admin!.username, clientIp);
+    return sendSuccess(res, result, `Activated ${result.affected} customer accounts`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/bulk-renew', async (req: AuthenticatedAdminRequest, res, next) => {
+  try {
+    const { customerIds, additionalDays } = req.body || {};
+    if (!Array.isArray(customerIds) || customerIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'customerIds array required' });
+    }
+    const days = Number(additionalDays) || 30;
+    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+    const result = await CustomerService.bulkRenew(customerIds, days, req.admin!.id, req.admin!.username, clientIp);
+    return sendSuccess(res, result, `Renewed ${result.affected} customer accounts for +${days} days`);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
     const id = req.params.id as string;

@@ -294,4 +294,70 @@ export class AnnouncementService {
       acknowledgedAt: new Date(),
     };
   }
+
+  /**
+   * One-click emergency broadcast announcement
+   */
+  static async broadcastEmergency(
+    title: string,
+    message: string,
+    adminId: string,
+    adminUsername: string,
+    sourceIp: string
+  ) {
+    const announcement = await this.createAnnouncement(
+      {
+        title: `🚨 EMERGENCY: ${title}`,
+        message,
+        type: 'emergency',
+        priority: 'critical',
+        targetScope: 'global',
+        requireAck: true,
+      },
+      adminId,
+      adminUsername,
+      sourceIp
+    );
+
+    return this.publishAnnouncement(announcement.announcementId, adminId, adminUsername, sourceIp);
+  }
+
+  /**
+   * Automated activation of scheduled announcements & expiration of ended announcements
+   */
+  static async processScheduledAndExpiring(): Promise<{ activated: number; expired: number }> {
+    const now = new Date();
+
+    // 1. Activate scheduled announcements whose start date has arrived
+    const scheduledToActivate = await Announcement.find({
+      status: 'draft',
+      startDate: { $lte: now },
+    });
+
+    let activated = 0;
+    for (const ann of scheduledToActivate) {
+      ann.status = 'published';
+      await ann.save();
+      activated++;
+    }
+
+    // 2. Expire published announcements whose expiry date has passed
+    const activeToExpire = await Announcement.find({
+      status: 'published',
+      expiresAt: { $lte: now },
+    });
+
+    let expired = 0;
+    for (const ann of activeToExpire) {
+      ann.status = 'expired';
+      await ann.save();
+      expired++;
+    }
+
+    if (activated > 0 || expired > 0) {
+      await this.invalidateCache();
+    }
+
+    return { activated, expired };
+  }
 }

@@ -175,4 +175,78 @@ export class AnalyticsService {
       };
     });
   }
+
+  /**
+   * Real percentile latencies (P50, P95, P99) and RPS calculated from real RequestLog telemetry
+   */
+  static async getPerformanceMetrics(hours = 24) {
+    const since = new Date(Date.now() - hours * 3600 * 1000);
+
+    const logs = await RequestLog.find({ timestamp: { $gte: since } }, { durationMs: 1, statusCode: 1 })
+      .sort({ durationMs: 1 })
+      .lean();
+
+    const total = logs.length;
+    if (total === 0) {
+      return {
+        totalRequests: 0,
+        rps: 0,
+        avgLatencyMs: 0,
+        p50LatencyMs: 0,
+        p95LatencyMs: 0,
+        p99LatencyMs: 0,
+        successRate: 100,
+        statusDistribution: { '2xx': 0, '4xx': 0, '5xx': 0 },
+      };
+    }
+
+    const durations = logs.map((l) => l.durationMs || 0).sort((a, b) => a - b);
+    const sum = durations.reduce((a, b) => a + b, 0);
+    const avg = Math.round(sum / total);
+
+    const p50 = durations[Math.floor(total * 0.5)] || 0;
+    const p95 = durations[Math.floor(total * 0.95)] || 0;
+    const p99 = durations[Math.floor(total * 0.99)] || 0;
+
+    let count2xx = 0;
+    let count4xx = 0;
+    let count5xx = 0;
+
+    for (const l of logs) {
+      const code = l.statusCode || 200;
+      if (code >= 200 && code < 300) count2xx++;
+      else if (code >= 400 && code < 500) count4xx++;
+      else if (code >= 500) count5xx++;
+    }
+
+    const rps = parseFloat((total / (hours * 3600)).toFixed(2));
+    const successRate = parseFloat(((count2xx / total) * 100).toFixed(1));
+
+    return {
+      totalRequests: total,
+      rps,
+      avgLatencyMs: avg,
+      p50LatencyMs: p50,
+      p95LatencyMs: p95,
+      p99LatencyMs: p99,
+      successRate,
+      statusDistribution: {
+        '2xx': count2xx,
+        '4xx': count4xx,
+        '5xx': count5xx,
+      },
+    };
+  }
+
+  /**
+   * Export daily analytics summary to CSV
+   */
+  static async exportDailyCsv(days = 30): Promise<string> {
+    const trends = await this.getDailyTrends(days);
+    const header = 'Date,TotalRequests,SuccessfulRequests,FailedRequests,BandwidthBytes\n';
+    const rows = trends
+      .map((t) => `${t.date},${t.requests},${t.successful},${t.failed},${t.bandwidthBytes}`)
+      .join('\n');
+    return header + rows;
+  }
 }

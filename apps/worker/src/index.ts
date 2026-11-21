@@ -7,6 +7,7 @@ import { runReconciliationJob } from './jobs/reconciliation.job.js';
 import { runWebhookJob } from './jobs/webhook.job.js';
 import { runHealthCheckJob } from './jobs/health.job.js';
 import { runRetentionJob } from './jobs/retention.job.js';
+import { runAutomationJob } from './jobs/automation.job.js';
 
 async function bootstrap() {
   console.log('==================================================');
@@ -48,10 +49,12 @@ async function bootstrap() {
     setInterval(() => runExpirationJob(redis), 60000);
     setInterval(() => runWebhookJob(), 10000);
     setInterval(() => runHealthCheckJob(), 60000);
+    setInterval(() => runAutomationJob(redis), 30000);
     setInterval(() => runRetentionJob(90), 24 * 3600 * 1000);
 
     runReconciliationJob(redis);
     runExpirationJob(redis);
+    runAutomationJob(redis);
     runHealthCheckJob();
 
     console.log('[Worker] All background worker loops active.');

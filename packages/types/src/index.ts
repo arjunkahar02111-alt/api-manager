@@ -347,6 +347,9 @@ export interface IAdminAuditLog {
   userAgent?: string;
   result: 'success' | 'failure';
   errorMessage?: string;
+  correlationId?: string;
+  previousHash?: string;
+  integrityHash?: string;
   createdAt: Date;
 }
 

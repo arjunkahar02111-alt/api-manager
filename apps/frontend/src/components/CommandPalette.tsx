@@ -48,6 +48,8 @@ export const CommandPalette: React.FC = () => {
 
   const adminCommands: CommandItem[] = [
     { id: 'a-overview', title: 'System Overview & SOC', category: 'Navigation', path: '/admin/overview', icon: LayoutDashboard },
+    { id: 'a-security', title: 'Security Monitor & Anti-Sharing Guard', category: 'Navigation', path: '/admin/security', icon: ShieldAlert, hint: 'SOC' },
+    { id: 'a-hosting', title: 'Hosting & MicroVM Deployments', category: 'Navigation', path: '/admin/hosting', icon: Server, hint: 'Port Proxy' },
     { id: 'a-announcements', title: 'Dynamic API Announcements', category: 'Navigation', path: '/admin/announcements', icon: Zap, hint: 'Real-time' },
     { id: 'a-distribution', title: 'API Sales & Client Delivery Packages', category: 'Navigation', path: '/admin/distribution', icon: ExternalLink, hint: 'Export MD' },
     { id: 'a-response-studio', title: 'API Response Studio & Preview', category: 'Navigation', path: '/admin/response-studio', icon: Terminal, hint: 'Envelope' },

@@ -36,6 +36,26 @@ router.post('/', async (req: AuthenticatedAdminRequest, res, next) => {
   }
 });
 
+router.post('/emergency', async (req: AuthenticatedAdminRequest, res, next) => {
+  try {
+    const { title, message } = req.body || {};
+    if (!title || !message) {
+      return res.status(400).json({ success: false, message: 'Title and message required for emergency broadcast' });
+    }
+    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+    const result = await AnnouncementService.broadcastEmergency(
+      title,
+      message,
+      req.admin!.id,
+      req.admin!.username,
+      clientIp
+    );
+    return sendSuccess(res, result, 'Emergency broadcast published immediately to all active routes', 201);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
     const id = String(req.params.id);
