@@ -263,7 +263,7 @@ export const AdminResponseStudio: React.FC = () => {
           </pre>
 
           <div className="flex items-center justify-between text-[11px] text-[#A39BAD] border-t border-[#2A1A4A] pt-3">
-            <span>Size: {Buffer.byteLength(simulatedResponseJson)} bytes</span>
+            <span>Size: {new TextEncoder().encode(simulatedResponseJson).length} bytes</span>
             <span>Content-Type: application/json; charset=utf-8</span>
           </div>
         </div>

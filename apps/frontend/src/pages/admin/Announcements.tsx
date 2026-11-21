@@ -63,7 +63,7 @@ export const AdminAnnouncements: React.FC = () => {
       if (typeFilter !== 'all') query.set('type', typeFilter);
       if (search) query.set('search', search);
 
-      const res = await apiRequest(`/api/v1/admin/announcements?${query.toString()}`);
+      const res = await apiRequest(`/api/v1/admin/announcements?${query.toString()}`, {}, 'admin');
       if (res.success) {
         setAnnouncements(res.data || []);
       }
@@ -78,10 +78,14 @@ export const AdminAnnouncements: React.FC = () => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const res = await apiRequest('/api/v1/admin/announcements', {
-        method: 'POST',
-        body: JSON.stringify(formData),
-      });
+      const res = await apiRequest(
+        '/api/v1/admin/announcements',
+        {
+          method: 'POST',
+          body: JSON.stringify(formData),
+        },
+        'admin'
+      );
 
       if (res.success) {
         setModalOpen(false);
@@ -96,18 +100,18 @@ export const AdminAnnouncements: React.FC = () => {
   };
 
   const handlePublish = async (id: string) => {
-    await apiRequest(`/api/v1/admin/announcements/${id}/publish`, { method: 'POST' });
+    await apiRequest(`/api/v1/admin/announcements/${id}/publish`, { method: 'POST' }, 'admin');
     fetchAnnouncements();
   };
 
   const handlePause = async (id: string) => {
-    await apiRequest(`/api/v1/admin/announcements/${id}/pause`, { method: 'POST' });
+    await apiRequest(`/api/v1/admin/announcements/${id}/pause`, { method: 'POST' }, 'admin');
     fetchAnnouncements();
   };
 
   const handleDelete = async (id: string) => {
     if (confirm(`Are you sure you want to delete announcement ${id}?`)) {
-      await apiRequest(`/api/v1/admin/announcements/${id}`, { method: 'DELETE' });
+      await apiRequest(`/api/v1/admin/announcements/${id}`, { method: 'DELETE' }, 'admin');
       fetchAnnouncements();
     }
   };

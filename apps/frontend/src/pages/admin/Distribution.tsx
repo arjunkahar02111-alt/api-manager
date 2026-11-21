@@ -34,8 +34,8 @@ export const AdminDistribution: React.FC = () => {
   const loadData = async () => {
     try {
       const [custRes, apiRes] = await Promise.all([
-        apiRequest('/api/v1/admin/customers'),
-        apiRequest('/api/v1/admin/apis'),
+        apiRequest('/api/v1/admin/customers', {}, 'admin'),
+        apiRequest('/api/v1/admin/apis', {}, 'admin'),
       ]);
 
       if (custRes.success && custRes.data?.length > 0) {

@@ -3,7 +3,7 @@
 export async function apiRequest<T = any>(
   endpoint: string,
   options: RequestInit = {},
-  tokenType: 'admin' | 'customer' | 'none' = 'none'
+  tokenType?: 'admin' | 'customer' | 'none'
 ): Promise<{ success: boolean; data?: T; message?: string; error?: any; meta?: any }> {
   const headers = new Headers(options.headers || {});
 
@@ -11,13 +11,25 @@ export async function apiRequest<T = any>(
     headers.set('Content-Type', 'application/json');
   }
 
+  // Auto-detect token type if not explicitly supplied
+  let effectiveTokenType = tokenType;
+  if (!effectiveTokenType) {
+    if (endpoint.startsWith('/api/v1/admin')) {
+      effectiveTokenType = 'admin';
+    } else if (endpoint.startsWith('/api/v1/customer')) {
+      effectiveTokenType = 'customer';
+    } else {
+      effectiveTokenType = 'none';
+    }
+  }
+
   // Attach token
-  if (tokenType === 'admin') {
+  if (effectiveTokenType === 'admin') {
     const adminToken = localStorage.getItem('arjun_admin_token');
     if (adminToken) {
       headers.set('Authorization', `Bearer ${adminToken}`);
     }
-  } else if (tokenType === 'customer') {
+  } else if (effectiveTokenType === 'customer') {
     const customerToken = localStorage.getItem('arjun_customer_token');
     if (customerToken) {
       headers.set('Authorization', `Bearer ${customerToken}`);
