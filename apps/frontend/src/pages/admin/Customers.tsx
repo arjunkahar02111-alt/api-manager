@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../services/api';
+import { useRealtime } from '../../context/RealtimeContext';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
 import {
@@ -35,6 +36,7 @@ const formatGatewayPath = (path: string) => {
 };
 
 export const AdminCustomers: React.FC = () => {
+  const { lastEvent, isConnected } = useRealtime();
   const [customers, setCustomers] = useState<any[]>([]);
   const [apis, setApis] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,6 +89,21 @@ export const AdminCustomers: React.FC = () => {
     fetchApis();
   }, [search, statusFilter]);
 
+  // Real-time reactive listener for instant updates across tabs/nodes
+  useEffect(() => {
+    if (lastEvent && (lastEvent.type.startsWith('client:') || lastEvent.type === 'system:metrics')) {
+      fetchCustomersSilently();
+    }
+  }, [lastEvent]);
+
+  // Secondary polling sync every 6 seconds as resilient fallback
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchCustomersSilently();
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [search, statusFilter]);
+
   const fetchCustomers = async () => {
     setLoading(true);
     let url = `/api/v1/admin/customers?page=1&limit=50`;
@@ -96,6 +113,15 @@ export const AdminCustomers: React.FC = () => {
     const res = await apiRequest(url, {}, 'admin');
     if (res.success) setCustomers(res.data || []);
     setLoading(false);
+  };
+
+  const fetchCustomersSilently = async () => {
+    let url = `/api/v1/admin/customers?page=1&limit=50`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    if (statusFilter) url += `&status=${statusFilter}`;
+
+    const res = await apiRequest(url, {}, 'admin');
+    if (res.success) setCustomers(res.data || []);
   };
 
   const fetchApis = async () => {
@@ -344,6 +370,16 @@ export const AdminCustomers: React.FC = () => {
             <span className="w-2.5 h-2.5 bg-[#EF4444]" />
             <span className="text-[11px] font-bold text-[#EF4444] uppercase tracking-[0.15em] font-mono">
               QUOTA ENFORCEMENT // ACCESS KEYS
+            </span>
+            <span
+              className={`inline-flex items-center gap-1.5 text-[9px] font-mono px-2 py-0.5 border ${
+                isConnected
+                  ? 'bg-[#0A2614] border-[#10B981] text-[#10B981]'
+                  : 'bg-[#1F1930] border-[#3B3254] text-[#A39BAD]'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-[#10B981] animate-pulse' : 'bg-[#A39BAD]'}`} />
+              {isConnected ? 'REAL-TIME LIVE' : 'CONNECTING...'}
             </span>
           </div>
           <h1 className="font-display text-3xl sm:text-4xl lg:text-5xl text-white tracking-tight uppercase leading-none">

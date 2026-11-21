@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
+import { useRealtime } from '../context/RealtimeContext';
 import { BrandLogo } from './branding';
 import { NotificationCenter } from './NotificationCenter';
 import {
@@ -18,6 +19,7 @@ import {
 export const Navbar: React.FC = () => {
   const { user, role, logout } = useAuth();
   const { mobileMenuOpen, toggleMobileMenu, toggleCommandPalette, unreadCount, isOnline } = useUI();
+  const { isConnected: isRealtimeConnected } = useRealtime();
   const [showNotifications, setShowNotifications] = useState(false);
 
   const dashboardLink = role === 'super_admin' ? '/admin/overview' : '/customer/overview';
@@ -60,16 +62,16 @@ export const Navbar: React.FC = () => {
             GATEWAY // ONLINE
           </span>
 
-          {/* Network connectivity pill */}
+          {/* Real-time socket sync pill */}
           <span
-            className={`hidden md:inline-flex items-center gap-1 text-[9px] px-2 py-0.5 border ${
-              isOnline
+            className={`hidden md:inline-flex items-center gap-1.5 text-[9px] px-2 py-0.5 border ${
+              isRealtimeConnected
                 ? 'bg-[#0A2614] border-[#10B981] text-[#10B981]'
-                : 'bg-[#260A0A] border-[#EF4444] text-[#EF4444]'
+                : 'bg-[#261E0A] border-[#D97706] text-[#F59E0B]'
             }`}
           >
-            {isOnline ? <Wifi className="w-2.5 h-2.5" /> : <WifiOff className="w-2.5 h-2.5" />}
-            {isOnline ? 'CLOUD SYNC' : 'OFFLINE'}
+            <span className={`w-1.5 h-1.5 rounded-full ${isRealtimeConnected ? 'bg-[#10B981] animate-pulse' : 'bg-[#F59E0B]'}`} />
+            {isRealtimeConnected ? 'REAL-TIME LIVE' : 'SYNCING'}
           </span>
         </div>
       </div>

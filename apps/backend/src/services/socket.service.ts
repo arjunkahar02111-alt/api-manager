@@ -19,6 +19,9 @@ class SocketManager {
     });
 
     this.io.on('connection', (socket) => {
+      // Auto-join telemetry room for instant zero-config updates
+      socket.join('admin-telemetry');
+
       socket.on('subscribe:admin', () => {
         socket.join('admin-telemetry');
       });
@@ -37,6 +40,7 @@ class SocketManager {
   broadcastToAdmin(event: string, payload: any) {
     if (this.io) {
       this.io.to('admin-telemetry').emit(event, payload);
+      this.io.emit(event, payload);
     }
   }
 

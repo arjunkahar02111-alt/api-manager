@@ -2,6 +2,7 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { UIProvider } from './context/UIContext';
+import { RealtimeProvider } from './context/RealtimeContext';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { CommandPalette } from './components/CommandPalette';
@@ -47,37 +48,39 @@ export const App: React.FC = () => {
 
   // Administrator Control Center (Sole Platform Interface)
   return (
-    <UIProvider>
-      <div className="flex min-h-screen bg-[#050508] text-[#F5F3FA] selection:bg-[#A020F0] selection:text-white">
-        <Sidebar />
-        <div className="flex-1 flex flex-col min-w-0">
-          <Navbar />
-          <main className="flex-1 overflow-y-auto">
-            <Routes>
-              <Route path="/admin/overview" element={<AdminOverview />} />
-              <Route path="/admin/security" element={<AdminSecurityMonitor />} />
-              <Route path="/admin/hosting" element={<AdminHosting />} />
-              <Route path="/admin/customers" element={<AdminCustomers />} />
-              <Route path="/admin/distribution" element={<AdminDistribution />} />
-              <Route path="/admin/announcements" element={<AdminAnnouncements />} />
-              <Route path="/admin/response-studio" element={<AdminResponseStudio />} />
-              <Route path="/admin/apis" element={<AdminApis />} />
-              <Route path="/admin/subscriptions" element={<AdminSubscriptions />} />
-              <Route path="/admin/payments" element={<AdminPayments />} />
-              <Route path="/admin/analytics" element={<AdminAnalytics />} />
-              <Route path="/admin/logs" element={<AdminLogs />} />
-              <Route path="/admin/health" element={<AdminHealth />} />
-              <Route path="/admin/tickets" element={<AdminTickets />} />
-              <Route path="/admin/system" element={<AdminSystem />} />
-              <Route path="/admin/backups" element={<AdminBackups />} />
-              <Route path="/admin/audit" element={<AdminAudit />} />
-              <Route path="/admin/maintenance" element={<AdminMaintenance />} />
-              <Route path="*" element={<Navigate to="/admin/overview" replace />} />
-            </Routes>
-          </main>
+    <RealtimeProvider>
+      <UIProvider>
+        <div className="flex min-h-screen bg-[#050508] text-[#F5F3FA] selection:bg-[#A020F0] selection:text-white">
+          <Sidebar />
+          <div className="flex-1 flex flex-col min-w-0">
+            <Navbar />
+            <main className="flex-1 overflow-y-auto">
+              <Routes>
+                <Route path="/admin/overview" element={<AdminOverview />} />
+                <Route path="/admin/security" element={<AdminSecurityMonitor />} />
+                <Route path="/admin/hosting" element={<AdminHosting />} />
+                <Route path="/admin/customers" element={<AdminCustomers />} />
+                <Route path="/admin/distribution" element={<AdminDistribution />} />
+                <Route path="/admin/announcements" element={<AdminAnnouncements />} />
+                <Route path="/admin/response-studio" element={<AdminResponseStudio />} />
+                <Route path="/admin/apis" element={<AdminApis />} />
+                <Route path="/admin/subscriptions" element={<AdminSubscriptions />} />
+                <Route path="/admin/payments" element={<AdminPayments />} />
+                <Route path="/admin/analytics" element={<AdminAnalytics />} />
+                <Route path="/admin/logs" element={<AdminLogs />} />
+                <Route path="/admin/health" element={<AdminHealth />} />
+                <Route path="/admin/tickets" element={<AdminTickets />} />
+                <Route path="/admin/system" element={<AdminSystem />} />
+                <Route path="/admin/backups" element={<AdminBackups />} />
+                <Route path="/admin/audit" element={<AdminAudit />} />
+                <Route path="/admin/maintenance" element={<AdminMaintenance />} />
+                <Route path="*" element={<Navigate to="/admin/overview" replace />} />
+              </Routes>
+            </main>
+          </div>
+          <CommandPalette />
         </div>
-        <CommandPalette />
-      </div>
-    </UIProvider>
+      </UIProvider>
+    </RealtimeProvider>
   );
 };

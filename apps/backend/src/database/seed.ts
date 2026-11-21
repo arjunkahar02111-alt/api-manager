@@ -134,5 +134,11 @@ export async function seedInitialData(): Promise<void> {
     console.log('[Seed] Purged legacy test_developer customer.');
   }
 
+  // Purge all legacy soft-deleted client records so their names/emails can be immediately reused
+  const deletedResult = await Customer.deleteMany({ status: 'deleted' });
+  if (deletedResult.deletedCount > 0) {
+    console.log(`[Seed] Purged ${deletedResult.deletedCount} legacy deleted client records.`);
+  }
+
   console.log('[Seed] Baseline configuration verified successfully.');
 }

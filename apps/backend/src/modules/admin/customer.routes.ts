@@ -4,6 +4,7 @@ import { CustomerService } from '../../services/customer.service.js';
 import { CreateCustomerSchema, UpdateCustomerSchema, ExtendCustomerValiditySchema, ResetBoundIpSchema } from '@arjun/schemas';
 import { Customer, ApiKey } from '../../database/models/index.js';
 import { getRedisClient } from '../../services/redis.service.js';
+import { SocketService } from '../../services/socket.service.js';
 import { SecurityService } from '../../services/security.service.js';
 import { sendSuccess, NotFoundError } from '@arjun/shared';
 
@@ -111,6 +112,11 @@ router.patch('/:id', async (req: AuthenticatedAdminRequest, res, next) => {
       await redis.del(`auth:key:${key.keyHash}`);
       await redis.del(`key:bound_ip:${key.keyHash}`);
     }
+
+    SocketService.broadcastToAdmin('client:updated', {
+      customerId: customer._id.toString(),
+      action: 'updated',
+    });
 
     return sendSuccess(res, customer, 'Customer updated successfully');
   } catch (err) {

@@ -2,6 +2,7 @@ import { Customer, ApiKey, ApiCatalog, UsageDaily, UsageMonthly, UsageEvent } fr
 import { generateApiKey, ConflictError, NotFoundError } from '@arjun/shared';
 import { logAdminAction } from './audit.service.js';
 import { getRedisClient } from './redis.service.js';
+import { SocketService } from './socket.service.js';
 import { config } from '../config/index.js';
 
 export interface CreateCustomerInput {
@@ -42,13 +43,21 @@ export class CustomerService {
     const fullName = data.fullName && data.fullName.trim() ? data.fullName.trim() : rawUsername;
     const email = data.email && data.email.trim()
       ? data.email.trim().toLowerCase()
-      : `${cleanUsername}@client.internal`;
+      : `${cleanUsername}_${Date.now()}@client.internal`;
 
+    // 1. Automatically purge any legacy soft-deleted client records with this username or email
+    await Customer.deleteMany({
+      $or: [{ username: cleanUsername }, { email }],
+      status: 'deleted',
+    });
+
+    // 2. Reject only if an active or suspended client currently occupies this username or email
     const existing = await Customer.findOne({
       $or: [{ username: cleanUsername }, { email }],
+      status: { $ne: 'deleted' },
     });
     if (existing) {
-      throw new ConflictError('A client with this name or email already exists');
+      throw new ConflictError(`A client with the name '${cleanUsername}' or email '${email}' already exists`);
     }
 
     const validityDays = data.validityDays && Number(data.validityDays) > 0 ? Number(data.validityDays) : 30;
@@ -129,6 +138,13 @@ export class CustomerService {
       `👉 Header Authentication:`,
       `curl -H "X-API-Key: ${rawKey}" "${sampleUrl}?query=YOUR_SEARCH"`,
     ].join('\n');
+
+    SocketService.broadcastToAdmin('client:created', {
+      customerId: customer._id.toString(),
+      username: customer.username,
+      fullName: customer.fullName,
+      keyPrefix: apiKey.keyPrefix,
+    });
 
     return {
       customer,
@@ -211,6 +227,11 @@ export class CustomerService {
       `curl -H "X-API-Key: ${rawKey}" "${sampleUrl}"`,
     ].join('\n');
 
+    SocketService.broadcastToAdmin('client:updated', {
+      customerId: customer._id.toString(),
+      action: 'key_regenerated',
+    });
+
     return {
       keyPrefix: newKey.keyPrefix,
       rawKey,
@@ -247,6 +268,12 @@ export class CustomerService {
       result: 'success',
     });
 
+    SocketService.broadcastToAdmin('client:updated', {
+      customerId: customer._id.toString(),
+      status: 'suspended',
+      action: 'suspended',
+    });
+
     return customer;
   }
 
@@ -274,6 +301,12 @@ export class CustomerService {
       resourceId: customer._id.toString(),
       sourceIp,
       result: 'success',
+    });
+
+    SocketService.broadcastToAdmin('client:updated', {
+      customerId: customer._id.toString(),
+      status: 'active',
+      action: 'activated',
     });
 
     return customer;
@@ -308,6 +341,11 @@ export class CustomerService {
       afterState: { expiresAt: customer.expiresAt, additionalDays },
       sourceIp,
       result: 'success',
+    });
+
+    SocketService.broadcastToAdmin('client:updated', {
+      customerId: customer._id.toString(),
+      action: 'renewed',
     });
 
     return customer;
@@ -349,6 +387,11 @@ export class CustomerService {
       result: 'success',
     });
 
+    SocketService.broadcastToAdmin('client:updated', {
+      customerId: customer._id.toString(),
+      action: 'usage_reset',
+    });
+
     return { success: true, message: `${type} usage successfully reset for customer ${customer.username}` };
   }
 
@@ -361,24 +404,39 @@ export class CustomerService {
     const customer = await Customer.findById(customerId);
     if (!customer) throw new NotFoundError('Customer not found');
 
-    customer.status = 'deleted';
-    customer.deletedAt = new Date();
-    await customer.save();
+    const customerUsername = customer.username;
 
-    // Revoke key
-    await ApiKey.updateMany({ customerId: customer._id }, { status: 'revoked', revokedAt: new Date() });
-
+    // Revoke and delete all keys from database and Redis cache
+    const keys = await ApiKey.find({ customerId: customer._id });
     const redis = getRedisClient();
-    await redis.del(`customer:${customer._id}`);
+    for (const key of keys) {
+      await redis.del(`auth:key:${key.keyHash}`).catch(() => {});
+      await redis.del(`key:bound_ip:${key.keyHash}`).catch(() => {});
+    }
+    await ApiKey.deleteMany({ customerId: customer._id });
+
+    // Clean up Redis customer cache & bound IP
+    await redis.del(`customer:${customer._id}`).catch(() => {});
+    if (customer.boundIp) {
+      await redis.srem('security:bound_ips', customer.boundIp).catch(() => {});
+    }
+
+    // Completely hard delete the customer record from MongoDB
+    await Customer.findByIdAndDelete(customer._id);
 
     await logAdminAction({
       administratorId: adminId,
       administratorUsername: adminUsername,
       action: 'CUSTOMER_DELETED',
       resourceType: 'customer',
-      resourceId: customer._id.toString(),
+      resourceId: customerId,
       sourceIp,
       result: 'success',
+    });
+
+    SocketService.broadcastToAdmin('client:deleted', {
+      customerId,
+      username: customerUsername,
     });
 
     return { success: true };
