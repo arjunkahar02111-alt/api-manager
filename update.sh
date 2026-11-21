@@ -58,14 +58,23 @@ pm2 reload infrastructure/pm2/ecosystem.config.cjs --update-env
 pm2 save
 log_success "PM2 cluster processes reloaded."
 
-# 5. Reload Nginx
+# 5. Sync and Reload Nginx
 if command -v nginx &>/dev/null; then
-    log_info "Validating and reloading Nginx..."
+    log_info "Synchronizing and reloading Nginx configuration..."
+    if [[ -d /etc/nginx/sites-available ]]; then
+        cp infrastructure/nginx/api.karviontechnologies.in.conf /etc/nginx/sites-available/api.karviontechnologies.in.conf || true
+        ln -sf /etc/nginx/sites-available/api.karviontechnologies.in.conf /etc/nginx/sites-enabled/ || true
+    fi
     nginx -t && systemctl reload nginx
 fi
 
 # 6. Post-Update Health Probe
 sleep 3
+if [[ -f scripts/post-deploy-verify.sh ]]; then
+    chmod +x scripts/post-deploy-verify.sh
+    bash scripts/post-deploy-verify.sh || true
+fi
+
 BACKEND_OK=$(curl -s http://127.0.0.1:3000/health | grep -c '"status":"healthy"' || true)
 GATEWAY_OK=$(curl -s http://127.0.0.1:3001/health | grep -c '"status":"healthy"' || true)
 
