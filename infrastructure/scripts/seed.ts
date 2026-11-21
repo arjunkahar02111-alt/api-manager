@@ -189,6 +189,21 @@ async function seed() {
       authRequired: true,
       allowedCustomerPlans: ['*'],
     },
+    {
+      name: 'Vehicle to Number V2NN',
+      slug: 'v2nn',
+      description: 'Vehicle registration to mobile number lookup (v2nn)',
+      category: 'Vehicle Information',
+      gatewayPath: '/v2nn',
+      upstreamBaseUrl: 'https://rootx-osint.in',
+      upstreamPath: '/?type=v_num&key=Axn_personal',
+      allowedMethods: ['GET'],
+      timeoutMs: 30000,
+      cacheTtlSeconds: 0,
+      isActive: true,
+      authRequired: true,
+      allowedCustomerPlans: ['*'],
+    },
   ];
 
   for (const ep of endpoints) {

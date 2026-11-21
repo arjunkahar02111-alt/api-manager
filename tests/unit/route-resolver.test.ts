@@ -77,8 +77,12 @@ describe('Gateway Route Resolver & Vehicle Intelligence Aliases Suite', () => {
     expect(resolved?.route.gatewayPath).toBe('/vehicle2-n');
   });
 
-  it('4. should resolve /v2n-2 and /v2n aliases correctly', async () => {
+  it('4. should resolve /v2nn, /v2n-2, /v2n, and /vehicle2n aliases correctly', async () => {
     await redis.flushall();
+    const resolvedV2nn = await resolver.resolve('/v2nn');
+    expect(resolvedV2nn).not.toBeNull();
+    expect(resolvedV2nn?.route.upstreamBaseUrl).toBe('https://rootx-osint.in');
+
     const resolvedV2n2 = await resolver.resolve('/v2n-2');
     expect(resolvedV2n2).not.toBeNull();
     expect(resolvedV2n2?.route.upstreamBaseUrl).toBe('https://rootx-osint.in');
@@ -86,6 +90,10 @@ describe('Gateway Route Resolver & Vehicle Intelligence Aliases Suite', () => {
     const resolvedV2n = await resolver.resolve('/v2n');
     expect(resolvedV2n).not.toBeNull();
     expect(resolvedV2n?.route.upstreamBaseUrl).toBe('https://rootx-osint.in');
+
+    const resolvedVehicle2n = await resolver.resolve('/vehicle2n');
+    expect(resolvedVehicle2n).not.toBeNull();
+    expect(resolvedVehicle2n?.route.upstreamBaseUrl).toBe('https://rootx-osint.in');
   });
 
   it('5. should return null for non-existent and unmapped routes', async () => {

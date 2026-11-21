@@ -2,6 +2,7 @@ import { Customer, ApiKey, ApiCatalog, UsageDaily, UsageMonthly, UsageEvent } fr
 import { generateApiKey, ConflictError, NotFoundError } from '@arjun/shared';
 import { logAdminAction } from './audit.service.js';
 import { getRedisClient } from './redis.service.js';
+import { config } from '../config/index.js';
 
 export interface CreateCustomerInput {
   username: string;
@@ -103,9 +104,12 @@ export class CustomerService {
       result: 'success',
     });
 
+    const publicBase = (config.publicBaseUrl || 'https://api.karviontechnologies.in').replace(/\/$/, '');
     const apis = await ApiCatalog.find({ status: 'active' }).limit(1);
-    const sampleEndpoint = apis.length > 0 ? `/v1${apis[0].gatewayPath}` : '/v1/your-api';
-    const sampleUrl = `http://localhost:3001${sampleEndpoint}`;
+    const sampleEndpoint = apis.length > 0
+      ? (apis[0].gatewayPath.startsWith('/v1') ? apis[0].gatewayPath : `/v1${apis[0].gatewayPath}`)
+      : '/v1/vehicle2-n';
+    const sampleUrl = `${publicBase}${sampleEndpoint}`;
 
     const clientShareText = [
       `🚀 Your API Access Details:`,
@@ -189,9 +193,12 @@ export class CustomerService {
       result: 'success',
     });
 
+    const publicBase = (config.publicBaseUrl || 'https://api.karviontechnologies.in').replace(/\/$/, '');
     const apis = await ApiCatalog.find({ status: 'active' }).limit(1);
-    const sampleEndpoint = apis.length > 0 ? `/v1${apis[0].gatewayPath}` : '/v1/your-api';
-    const sampleUrl = `http://localhost:3001${sampleEndpoint}`;
+    const sampleEndpoint = apis.length > 0
+      ? (apis[0].gatewayPath.startsWith('/v1') ? apis[0].gatewayPath : `/v1${apis[0].gatewayPath}`)
+      : '/v1/vehicle2-n';
+    const sampleUrl = `${publicBase}${sampleEndpoint}`;
 
     const clientShareText = [
       `🚀 Your Regenerated API Key:`,

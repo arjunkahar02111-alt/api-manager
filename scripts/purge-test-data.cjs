@@ -11,7 +11,7 @@ async function purge() {
 
   // 2. Keep ONLY vehicle intelligence endpoints
   await db.collection('api_catalog').deleteMany({
-    slug: { $nin: ['rootx-vehicle-osint', 'vehicle2-n', 'v2n-2', 'v2n'] }
+    slug: { $nin: ['rootx-vehicle-osint', 'vehicle2-n', 'v2n-2', 'v2n', 'v2nn', 'vehicle2n'] }
   });
 
   // 3. Purge logs

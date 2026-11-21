@@ -18,6 +18,20 @@ import {
   Key,
 } from 'lucide-react';
 
+const getPublicGatewayBaseUrl = () => {
+  if (typeof window !== 'undefined') {
+    if (window.location.protocol === 'https:' || (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')) {
+      return window.location.origin;
+    }
+  }
+  return 'https://api.karviontechnologies.in';
+};
+
+const formatGatewayPath = (path: string) => {
+  const clean = path.startsWith('/') ? path : `/${path}`;
+  return clean.startsWith('/v1/') || clean === '/v1' ? clean : `/v1${clean}`;
+};
+
 export const AdminApis: React.FC = () => {
   const [apis, setApis] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -208,13 +222,13 @@ export const AdminApis: React.FC = () => {
             </div>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#0A0A0A] p-4 border-2 border-[#16A34A]">
               <div className="font-mono text-xs text-white truncate">
-                http://localhost:3001/v1{quickSuccess.gatewayPath}
+                {`${getPublicGatewayBaseUrl()}${formatGatewayPath(quickSuccess.gatewayPath)}`}
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   onClick={() =>
                     copyToClipboard(
-                      `http://localhost:3001/v1${quickSuccess.gatewayPath}`,
+                      `${getPublicGatewayBaseUrl()}${formatGatewayPath(quickSuccess.gatewayPath)}`,
                       'quick_success'
                     )
                   }
@@ -368,7 +382,7 @@ export const AdminApis: React.FC = () => {
                 </tr>
               ) : (
                 apis.map((api) => {
-                  const fullGatewayUrl = `http://localhost:3001/v1${api.gatewayPath}`;
+                  const fullGatewayUrl = `${getPublicGatewayBaseUrl()}${formatGatewayPath(api.gatewayPath)}`;
                   const isCopied = copiedUrl === api._id;
 
                   return (

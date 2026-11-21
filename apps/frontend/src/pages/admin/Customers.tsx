@@ -20,6 +20,20 @@ import {
   Lock,
 } from 'lucide-react';
 
+const getPublicGatewayBaseUrl = () => {
+  if (typeof window !== 'undefined') {
+    if (window.location.protocol === 'https:' || (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')) {
+      return window.location.origin;
+    }
+  }
+  return 'https://api.karviontechnologies.in';
+};
+
+const formatGatewayPath = (path: string) => {
+  const clean = path.startsWith('/') ? path : `/${path}`;
+  return clean.startsWith('/v1/') || clean === '/v1' ? clean : `/v1${clean}`;
+};
+
 export const AdminCustomers: React.FC = () => {
   const [customers, setCustomers] = useState<any[]>([]);
   const [apis, setApis] = useState<any[]>([]);
@@ -103,9 +117,9 @@ export const AdminCustomers: React.FC = () => {
       }
 
       const selectedApi = apis.find((a) => a._id === formData.targetApiId);
-      const apiName = selectedApi ? selectedApi.name : 'All Platform APIs';
-      const gatewayPath = selectedApi ? `/v1${selectedApi.gatewayPath}` : '/v1/vehicle2-n';
-      const fullGatewayUrl = `http://localhost:3001${gatewayPath}`;
+      const apiName = selectedApi ? selectedApi.name : 'Vehicle Intelligence (vehicle2-n)';
+      const gatewayPath = selectedApi ? formatGatewayPath(selectedApi.gatewayPath) : '/v1/vehicle2-n';
+      const fullGatewayUrl = `${getPublicGatewayBaseUrl()}${gatewayPath}`;
 
       const res = await apiRequest(
         '/api/v1/admin/customers',

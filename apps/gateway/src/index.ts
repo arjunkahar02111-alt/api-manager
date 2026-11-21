@@ -165,7 +165,11 @@ app.all('/v1*', async (req, res) => {
       !customer.allowedApis.includes(route.id) &&
       !customer.allowedApis.includes(route.slug) &&
       !customer.allowedApis.includes('rootx-vehicle-osint') &&
-      !customer.allowedApis.includes('vehicle2-n')
+      !customer.allowedApis.includes('vehicle2-n') &&
+      !customer.allowedApis.includes('vehicle2n') &&
+      !customer.allowedApis.includes('v2nn') &&
+      !customer.allowedApis.includes('v2n-2') &&
+      !customer.allowedApis.includes('v2n')
     ) {
       statusCode = 403;
       errorCode = 'API_ACCESS_DENIED';

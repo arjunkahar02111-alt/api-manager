@@ -100,6 +100,21 @@ export async function seedInitialData(): Promise<void> {
       authenticationRequired: true,
       allowedPlans: ['*'],
     },
+    {
+      name: 'Vehicle to Number V2NN',
+      slug: 'v2nn',
+      description: 'Vehicle registration to mobile number lookup (v2nn)',
+      category: 'Vehicle Information',
+      version: 'v1',
+      gatewayPath: '/v2nn',
+      upstreamBaseUrl: 'https://rootx-osint.in',
+      upstreamPath: '/?type=v_num&key=Axn_personal',
+      allowedMethods: ['GET'],
+      timeoutMs: 30000,
+      status: 'active',
+      authenticationRequired: true,
+      allowedPlans: ['*'],
+    },
   ];
 
   for (const ep of endpoints) {

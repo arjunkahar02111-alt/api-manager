@@ -91,14 +91,14 @@ export class RouteResolver {
     }
 
     // 3. Resilient Alias Resolution for Vehicle Intelligence endpoints:
-    // Seamlessly resolves /vehicle2-n, /v2n-2, /v2n, /osint/vehicle across all catalog representations
-    const VEHICLE_ALIASES = new Set(['/vehicle2-n', '/v2n-2', '/v2n', '/osint/vehicle', '/vehicle']);
+    // Seamlessly resolves /vehicle2-n, /v2nn, /v2n-2, /v2n, /vehicle2n, /osint/vehicle across all catalog representations
+    const VEHICLE_ALIASES = new Set(['/vehicle2-n', '/vehicle2n', '/v2nn', '/v2n-2', '/v2n', '/osint/vehicle', '/vehicle']);
     for (const candidate of candidatePaths) {
       if (VEHICLE_ALIASES.has(candidate.path)) {
         const api = await db.collection('api_catalog').findOne({
           $or: [
             { gatewayPath: { $in: Array.from(VEHICLE_ALIASES) } },
-            { slug: { $in: ['vehicle2-n', 'v2n-2', 'rootx-vehicle-osint', 'v2n'] } },
+            { slug: { $in: ['vehicle2-n', 'vehicle2n', 'v2nn', 'v2n-2', 'rootx-vehicle-osint', 'v2n'] } },
           ],
         });
 
