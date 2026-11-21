@@ -1,0 +1,151 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: arjun-mongodb
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - arjun-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: arjun-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - arjun-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/backend.Dockerfile
+    container_name: arjun-backend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - BACKEND_PORT=3000
+      - MONGODB_URI=mongodb://mongodb:27017/arjun_api_manager
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_ADMIN_SECRET=${JWT_ADMIN_SECRET:-super_secret_jwt_admin_key_32_chars_minimum}
+      - JWT_CUSTOMER_SECRET=${JWT_CUSTOMER_SECRET:-super_secret_jwt_customer_key_32_chars_minimum}
+      - DATA_ENCRYPTION_KEY=${DATA_ENCRYPTION_KEY:-e1f98a2b5c7d3e4f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - arjun-network
+
+  gateway:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/gateway.Dockerfile
+    container_name: arjun-gateway
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - GATEWAY_PORT=3001
+      - MONGODB_URI=mongodb://mongodb:27017/arjun_api_manager
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - arjun-network
+
+  worker:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/worker.Dockerfile
+    container_name: arjun-worker
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/arjun_api_manager
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATA_ENCRYPTION_KEY=${DATA_ENCRYPTION_KEY:-e1f98a2b5c7d3e4f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - arjun-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/frontend.Dockerfile
+    container_name: arjun-frontend
+    restart: unless-stopped
+    networks:
+      - arjun-network
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: arjun-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infrastructure/nginx/conf.d:/etc/nginx/conf.d:ro
+      - certbot_certs:/etc/letsencrypt
+      - certbot_challenge:/var/www/certbot
+    depends_on:
+      - backend
+      - gateway
+      - frontend
+    networks:
+      - arjun-network
+
+  prometheus:
+    image: prom/prometheus:v2.50.1
+    container_name: arjun-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - arjun-network
+
+  grafana:
+    image: grafana/grafana:10.3.3
+    container_name: arjun-grafana
+    restart: unless-stopped
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - arjun-network
+
+networks:
+  arjun-network:
+    driver: bridge
+
+volumes:
+  mongo_data:
+  redis_data:
+  certbot_certs:
+  certbot_challenge:
+  prometheus_data:
+  grafana_data:

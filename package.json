@@ -1,0 +1,33 @@
+{
+  "name": "arjun-api-manager-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Enterprise API Management SaaS Platform",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "run": "tsx infrastructure/scripts/dev-runner.ts",
+    "dev": "tsx infrastructure/scripts/dev-runner.ts",
+    "build": "pnpm --filter \"./packages/*\" --filter \"./apps/*\" build",
+    "test": "vitest run",
+    "dev:backend": "pnpm --filter backend dev",
+    "dev:gateway": "pnpm --filter gateway dev",
+    "dev:worker": "pnpm --filter worker dev",
+    "dev:frontend": "pnpm --filter frontend dev"
+  },
+  "devDependencies": {
+    "@types/ioredis-mock": "^8.2.8",
+    "@types/supertest": "^6.0.3",
+    "ioredis": "^5.11.1",
+    "ioredis-mock": "^8.13.1",
+    "mongodb-memory-server": "^11.3.0",
+    "mongoose": "^8.24.10",
+    "supertest": "^7.3.2",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.6"
+  }
+}
