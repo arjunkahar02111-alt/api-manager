@@ -66,15 +66,9 @@ fi
 
 # 6. Post-Update Health Probe
 sleep 3
-BACKEND_OK=$(curl -s http://127.0.0.1:3000/health | grep -c '"status":"healthy"' || true)
-GATEWAY_OK=$(curl -s http://127.0.0.1:3001/health | grep -c '"status":"healthy"' || true)
-
-if [[ "${BACKEND_OK}" -eq 1 && "${GATEWAY_OK}" -eq 1 ]]; then
-    log_success "All application services verified healthy after reload."
-    UPDATE_STATUS="SUCCESS"
-else
-    log_warn "One or more services did not return healthy status immediately. Please check 'pm2 status'."
-    UPDATE_STATUS="WARNING"
+if [[ -f scripts/post-deploy-verify.sh ]]; then
+    chmod +x scripts/post-deploy-verify.sh
+    bash scripts/post-deploy-verify.sh || true
 fi
 
 # 7. Discord Webhook Notification
