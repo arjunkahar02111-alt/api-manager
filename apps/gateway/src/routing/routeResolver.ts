@@ -5,6 +5,7 @@ export interface RouteConfig {
   id: string;
   name: string;
   slug: string;
+  version?: string;
   gatewayPath: string;
   upstreamBaseUrl: string;
   upstreamPath: string;

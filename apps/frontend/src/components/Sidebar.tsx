@@ -19,6 +19,10 @@ import {
   ShieldAlert,
   Server,
   X,
+  Megaphone,
+  Share2,
+  Sliders,
+  Users,
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -32,10 +36,14 @@ export const Sidebar: React.FC = () => {
 
   const links = [
     { to: '/admin/overview', label: 'Overview', icon: LayoutDashboard },
+    { to: '/admin/announcements', label: 'Dynamic Announcements', icon: Megaphone },
+    { to: '/admin/distribution', label: 'API Sales & Delivery', icon: Share2 },
+    { to: '/admin/response-studio', label: 'API Response Studio', icon: Sliders },
+    { to: '/admin/apis', label: 'API Catalog & Endpoints', icon: Layers },
+    { to: '/admin/customers', label: 'Client Management', icon: Users },
+    { to: '/admin/maintenance', label: 'Maintenance Control', icon: AlertTriangle },
     { to: '/admin/security', label: 'Security & Live Monitor', icon: ShieldAlert },
     { to: '/admin/hosting', label: 'App Hosting & Deploy', icon: Server },
-    { to: '/admin/apis', label: 'Main APIs & Connector', icon: Layers },
-    { to: '/admin/customers', label: 'Client Keys & Quotas', icon: Key },
     { to: '/admin/logs', label: 'Gateway Logs', icon: History },
     { to: '/admin/health', label: 'Health Telemetry', icon: HeartPulse },
     { to: '/admin/system', label: 'System Monitor', icon: Cpu },
@@ -45,7 +53,6 @@ export const Sidebar: React.FC = () => {
     { to: '/admin/tickets', label: 'Support Tickets', icon: LifeBuoy },
     { to: '/admin/backups', label: 'Database Backups', icon: Database },
     { to: '/admin/audit', label: 'Audit Trail', icon: Activity },
-    { to: '/admin/maintenance', label: 'Maintenance Mode', icon: AlertTriangle },
   ];
 
   const sidebarContent = (

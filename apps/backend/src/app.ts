@@ -26,6 +26,8 @@ import adminBackupsRoutes from './modules/admin/backups.routes.js';
 import adminSecurityRoutes from './modules/admin/security.routes.js';
 import adminMonitoringRoutes from './modules/admin/monitoring.routes.js';
 import adminHostingRoutes from './modules/admin/hosting.routes.js';
+import adminAnnouncementRoutes from './modules/admin/announcement.routes.js';
+import announcementAckRoutes from './modules/customer/announcementAck.routes.js';
 
 // Customer route imports
 import customerAuthRoutes from './modules/customer/auth.routes.js';
@@ -132,6 +134,8 @@ app.use('/api/v1/admin/backups', adminBackupsRoutes);
 app.use('/api/v1/admin/security', adminSecurityRoutes);
 app.use('/api/v1/admin/monitoring', adminMonitoringRoutes);
 app.use('/api/v1/admin/hosting', adminHostingRoutes);
+app.use('/api/v1/admin/announcements', adminAnnouncementRoutes);
+app.use('/api/v1/announcements', announcementAckRoutes);
 
 // Customer API Routes
 app.use('/api/v1/customer/auth', customerAuthRoutes);

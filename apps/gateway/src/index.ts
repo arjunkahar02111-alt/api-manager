@@ -13,6 +13,7 @@ import { QuotaEngine } from './quota/quotaEngine.js';
 import { ProxyEngine } from './proxy/proxyEngine.js';
 import { isIpAllowed, AppError } from '@arjun/shared';
 import { AntiSharingGuard, getClientIp } from './security/antiSharingGuard.js';
+import { AnnouncementManager } from './announcements/announcementManager.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -66,6 +67,79 @@ app.get('/metrics', async (_req, res) => {
   res.end(await promClient.register.metrics());
 });
 
+// Client Announcement Acknowledgment Endpoint
+app.post('/api/v1/announcements/:id/acknowledge', async (req, res) => {
+  try {
+    const rawKey = keyValidator.extractApiKey(req);
+    if (!rawKey) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'MISSING_API_KEY', message: 'API key required to acknowledge announcement.' },
+      });
+    }
+
+    const customer = await keyValidator.authenticate(rawKey);
+    const db = mongoose.connection.db;
+    if (!db) {
+      return res.status(500).json({ success: false, error: { message: 'Database connection offline' } });
+    }
+
+    const announcementId = req.params.id;
+    const clientIp = getClientIp(req);
+
+    const query: any = { announcementId };
+    if (mongoose.Types.ObjectId.isValid(announcementId)) {
+      query.$or = [{ announcementId }, { _id: new mongoose.Types.ObjectId(announcementId) }];
+      delete query.announcementId;
+    }
+
+    const announcement = await db.collection('announcements').findOne(query);
+
+    if (!announcement) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'ANNOUNCEMENT_NOT_FOUND', message: `Announcement ${announcementId} not found.` },
+      });
+    }
+
+    // Record acknowledgment if not already acknowledged
+    const acks = announcement.acknowledgments || [];
+    const alreadyAcked = acks.some((a: any) => a.clientId === customer.customerId);
+    if (!alreadyAcked) {
+      await db.collection('announcements').updateOne(
+        { _id: announcement._id },
+        {
+          $push: {
+            acknowledgments: {
+              clientId: customer.customerId,
+              customerUsername: customer.username,
+              keyPrefix: customer.keyPrefix,
+              clientIp,
+              acknowledgedAt: new Date(),
+            },
+          } as any,
+        }
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      status: 'acknowledged',
+      message: `Announcement ${announcementId} acknowledged successfully.`,
+      data: {
+        announcement_id: announcementId,
+        client_id: customer.customerId,
+        acknowledged_at: new Date().toISOString(),
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: { code: 'ACK_FAILED', message: err.message },
+    });
+  }
+});
+
 app.all('/v1*', async (req, res) => {
   const requestId = (req.headers['x-request-id'] as string) || crypto.randomUUID();
   res.setHeader('x-request-id', requestId);
@@ -84,6 +158,36 @@ app.all('/v1*', async (req, res) => {
   try {
     const clientIp = getClientIp(req);
     await AntiSharingGuard.checkIpBlacklist(clientIp, redis);
+
+    // Platform-Wide Maintenance Check
+    const rawMaint = await redis.get('system:maintenance').catch(() => null);
+    if (rawMaint) {
+      try {
+        const maint = JSON.parse(rawMaint);
+        if (maint.global || maint.gateway) {
+          statusCode = 503;
+          errorCode = 'API_MAINTENANCE';
+          return res.status(503).json({
+            success: false,
+            status: 'maintenance',
+            error: {
+              code: 'API_MAINTENANCE',
+              message: maint.message || 'This API is temporarily unavailable due to scheduled platform maintenance.',
+            },
+            announcement: {
+              active: true,
+              type: 'maintenance',
+              severity: 'warning',
+              title: 'Scheduled Platform Maintenance',
+              message: maint.message || 'Platform undergoing maintenance. Please retry in a few moments.',
+            },
+            meta: {
+              retry_after: 900,
+            },
+          });
+        }
+      } catch {}
+    }
 
     const fullPath = req.path;
     const gatewayRoutePath = fullPath.startsWith('/v1') ? fullPath.substring(3) : fullPath;
@@ -118,7 +222,18 @@ app.all('/v1*', async (req, res) => {
       errorCode = 'API_MAINTENANCE';
       return res.status(503).json({
         success: false,
+        status: 'maintenance',
         error: { code: 'API_MAINTENANCE', message: 'This API endpoint is currently undergoing maintenance.' },
+        announcement: {
+          active: true,
+          type: 'maintenance',
+          severity: 'warning',
+          title: 'Scheduled Maintenance',
+          message: 'This API is temporarily undergoing maintenance. Please try again later.',
+        },
+        meta: {
+          retry_after: 900,
+        },
       });
     }
 
@@ -219,6 +334,18 @@ app.all('/v1*', async (req, res) => {
     res.setHeader('X-RateLimit-Limit', (quotaResult.dailyLimit || customer.dailyRequestLimit).toString());
     res.setHeader('X-RateLimit-Remaining', (quotaResult.remainingDaily ?? 0).toString());
 
+    // Match Active Announcement for Client & API Route
+    const activeAnnouncements = await AnnouncementManager.getActiveAnnouncements(redis);
+    const matchedAnnouncement = AnnouncementManager.matchAnnouncement(activeAnnouncements, {
+      apiId: route.id,
+      routeSlug: route.slug,
+      gatewayPath: gatewayRoutePath,
+      customerId: customer.customerId,
+      customerUsername: customer.username,
+      keyPrefix: customer.keyPrefix,
+      apiVersion: (route as any).version || 'v1',
+    });
+
     let proxyResult;
     try {
       proxyResult = await ProxyEngine.forwardRequest(req, res, route, {
@@ -226,6 +353,7 @@ app.all('/v1*', async (req, res) => {
         reqLeft: quotaResult.remainingDaily !== undefined ? quotaResult.remainingDaily : Math.max(0, customer.dailyRequestLimit - (quotaResult.dailyUsed || 0)),
         reqTotal: quotaResult.dailyLimit || customer.dailyRequestLimit || 5000,
         expiresAt: customer.expiresAt,
+        announcement: matchedAnnouncement || undefined,
       }, subPath);
       statusCode = proxyResult.statusCode;
       requestBytes = proxyResult.requestBytes;

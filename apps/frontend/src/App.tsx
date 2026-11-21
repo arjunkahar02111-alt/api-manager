@@ -4,7 +4,6 @@ import { useAuth } from './context/AuthContext';
 import { UIProvider } from './context/UIContext';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
-import { CustomerSidebar } from './components/CustomerSidebar';
 import { CommandPalette } from './components/CommandPalette';
 import { Login } from './pages/Login';
 import { LoadingBrand } from './components/branding';
@@ -25,27 +24,19 @@ import { AdminAudit } from './pages/admin/Audit';
 import { AdminMaintenance } from './pages/admin/Maintenance';
 import { AdminSecurityMonitor } from './pages/admin/SecurityMonitor';
 import { AdminHosting } from './pages/admin/Hosting';
-
-// Customer Pages
-import { CustomerOverview } from './pages/customer/Overview';
-import { CustomerSecurity } from './pages/customer/Security';
-import { CustomerApis } from './pages/customer/Apis';
-import { CustomerPlayground } from './pages/customer/Playground';
-import { CustomerIpAllowlist } from './pages/customer/IpAllowlist';
-import { CustomerUsage } from './pages/customer/Usage';
-import { CustomerLogs } from './pages/customer/Logs';
-import { CustomerTickets } from './pages/customer/Tickets';
-import { CustomerWebhooks } from './pages/customer/Webhooks';
+import { AdminAnnouncements } from './pages/admin/Announcements';
+import { AdminDistribution } from './pages/admin/Distribution';
+import { AdminResponseStudio } from './pages/admin/ResponseStudio';
 
 export const App: React.FC = () => {
   const { role, isLoading } = useAuth();
 
   if (isLoading) {
-    return <LoadingBrand message="Initializing Karvion API Manager..." />;
+    return <LoadingBrand message="Initializing Karvion Administrator Control Center..." />;
   }
 
-  // Unauthenticated -> Login
-  if (!role) {
+  // Unauthenticated -> Admin Clearance Login
+  if (!role || role !== 'super_admin') {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
@@ -54,36 +45,7 @@ export const App: React.FC = () => {
     );
   }
 
-  // Customer Portal
-  if (role === 'customer') {
-    return (
-      <UIProvider>
-        <div className="flex min-h-screen bg-[#050508] text-[#F5F3FA] selection:bg-[#A020F0] selection:text-white">
-          <CustomerSidebar />
-          <div className="flex-1 flex flex-col min-w-0">
-            <Navbar />
-            <main className="flex-1 overflow-y-auto">
-              <Routes>
-                <Route path="/customer/overview" element={<CustomerOverview />} />
-                <Route path="/customer/security" element={<CustomerSecurity />} />
-                <Route path="/customer/apis" element={<CustomerApis />} />
-                <Route path="/customer/playground" element={<CustomerPlayground />} />
-                <Route path="/customer/ip-allowlist" element={<CustomerIpAllowlist />} />
-                <Route path="/customer/usage" element={<CustomerUsage />} />
-                <Route path="/customer/logs" element={<CustomerLogs />} />
-                <Route path="/customer/tickets" element={<CustomerTickets />} />
-                <Route path="/customer/webhooks" element={<CustomerWebhooks />} />
-                <Route path="*" element={<Navigate to="/customer/overview" replace />} />
-              </Routes>
-            </main>
-          </div>
-          <CommandPalette />
-        </div>
-      </UIProvider>
-    );
-  }
-
-  // Super Admin Portal
+  // Administrator Control Center (Sole Platform Interface)
   return (
     <UIProvider>
       <div className="flex min-h-screen bg-[#050508] text-[#F5F3FA] selection:bg-[#A020F0] selection:text-white">
@@ -96,6 +58,9 @@ export const App: React.FC = () => {
               <Route path="/admin/security" element={<AdminSecurityMonitor />} />
               <Route path="/admin/hosting" element={<AdminHosting />} />
               <Route path="/admin/customers" element={<AdminCustomers />} />
+              <Route path="/admin/distribution" element={<AdminDistribution />} />
+              <Route path="/admin/announcements" element={<AdminAnnouncements />} />
+              <Route path="/admin/response-studio" element={<AdminResponseStudio />} />
               <Route path="/admin/apis" element={<AdminApis />} />
               <Route path="/admin/subscriptions" element={<AdminSubscriptions />} />
               <Route path="/admin/payments" element={<AdminPayments />} />

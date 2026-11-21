@@ -110,6 +110,7 @@ export interface ClientResponseMetadata {
   reqLeft?: number;
   reqTotal?: number;
   expiresAt?: Date | string | null;
+  announcement?: any;
 }
 
 function formatExpiryDate(d?: Date | string | null): string {
@@ -313,6 +314,13 @@ export class ProxyEngine {
       if (clientMeta?.reqTotal !== undefined) res.setHeader('X-RateLimit-Limit', String(clientMeta.reqTotal));
       if (clientMeta?.expiresAt) res.setHeader('X-Expiry-Date', formatExpiryDate(clientMeta.expiresAt));
       res.setHeader('X-Response-Time', `${duration}ms`);
+      if (clientMeta?.announcement) {
+        res.setHeader('X-Karvion-Announcement', clientMeta.announcement.id);
+        if (clientMeta.announcement.acknowledgment_required) {
+          res.setHeader('X-Karvion-Ack-Required', 'true');
+          res.setHeader('X-Karvion-Ack-Url', `/api/v1/announcements/${clientMeta.announcement.id}/acknowledge`);
+        }
+      }
 
       let finalBody: Buffer | string = decompressedBuffer;
 
@@ -323,6 +331,11 @@ export class ProxyEngine {
           if (json && typeof json === 'object' && !Array.isArray(json)) {
             // Replace or set developer branding (customizable per user, default arjunkahar)
             json.developer = clientMeta?.developerTag || 'arjunkahar';
+
+            // Inject dynamic announcement if active and applicable
+            if (clientMeta?.announcement) {
+              json.announcement = clientMeta.announcement;
+            }
 
             // Inject customer quota stats
             if (clientMeta?.reqLeft !== undefined) {

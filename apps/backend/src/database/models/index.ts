@@ -22,3 +22,4 @@ export * from './UserDevice.js';
 export * from './UserSession.js';
 export * from './HostingDeployment.js';
 export * from './SecurityNotification.js';
+export * from './Announcement.js';

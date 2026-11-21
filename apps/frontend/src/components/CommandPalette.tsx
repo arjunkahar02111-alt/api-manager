@@ -48,10 +48,11 @@ export const CommandPalette: React.FC = () => {
 
   const adminCommands: CommandItem[] = [
     { id: 'a-overview', title: 'System Overview & SOC', category: 'Navigation', path: '/admin/overview', icon: LayoutDashboard },
-    { id: 'a-security', title: 'Security Monitor & Live Traffic', category: 'Navigation', path: '/admin/security', icon: ShieldAlert, hint: 'SSE Stream' },
-    { id: 'a-hosting', title: 'Application Hosting & Deployments', category: 'Navigation', path: '/admin/hosting', icon: Server, hint: 'Node / Python / PHP' },
+    { id: 'a-announcements', title: 'Dynamic API Announcements', category: 'Navigation', path: '/admin/announcements', icon: Zap, hint: 'Real-time' },
+    { id: 'a-distribution', title: 'API Sales & Client Delivery Packages', category: 'Navigation', path: '/admin/distribution', icon: ExternalLink, hint: 'Export MD' },
+    { id: 'a-response-studio', title: 'API Response Studio & Preview', category: 'Navigation', path: '/admin/response-studio', icon: Terminal, hint: 'Envelope' },
     { id: 'a-apis', title: 'API Catalog & 1-Click Connector', category: 'Navigation', path: '/admin/apis', icon: Layers, hint: 'Proxy' },
-    { id: 'a-customers', title: 'Client Accounts & API Keys', category: 'Navigation', path: '/admin/customers', icon: Key, hint: 'Quotas' },
+    { id: 'a-customers', title: 'Client Management & API Keys', category: 'Navigation', path: '/admin/customers', icon: Key, hint: 'Quotas' },
     { id: 'a-logs', title: 'Universal Gateway Logs', category: 'Navigation', path: '/admin/logs', icon: History },
     { id: 'a-health', title: 'Health Telemetry & Probes', category: 'Navigation', path: '/admin/health', icon: HeartPulse },
     { id: 'a-system', title: 'System Resources & Metrics', category: 'Navigation', path: '/admin/system', icon: Cpu, hint: 'CPU/RAM' },
