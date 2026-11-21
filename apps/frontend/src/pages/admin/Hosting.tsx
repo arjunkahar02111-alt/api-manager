@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../services/api';
+import { DeploymentTimeline } from '../../components/DeploymentTimeline';
 import {
   Server,
   Play,
@@ -374,6 +375,15 @@ export const AdminHosting: React.FC = () => {
                     <span className="text-[9px] text-[#737373] uppercase block">Uptime</span>
                     <span className="text-xs font-bold text-white">{formatUptime(dep.uptimeSeconds)}</span>
                   </div>
+                </div>
+
+                {/* Deployment Lifecycle Timeline */}
+                <div className="p-2.5 bg-[#08060D] border-b-2 border-[#262626]">
+                  <DeploymentTimeline
+                    status={dep.status}
+                    error={dep.lastError}
+                    uptimeSeconds={dep.uptimeSeconds}
+                  />
                 </div>
 
                 {/* Card Error if any */}

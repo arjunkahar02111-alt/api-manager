@@ -1,9 +1,11 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
+import { UIProvider } from './context/UIContext';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { CustomerSidebar } from './components/CustomerSidebar';
+import { CommandPalette } from './components/CommandPalette';
 import { Login } from './pages/Login';
 import { LoadingBrand } from './components/branding';
 
@@ -55,56 +57,62 @@ export const App: React.FC = () => {
   // Customer Portal
   if (role === 'customer') {
     return (
-      <div className="flex min-h-screen bg-[#050508] text-[#F5F3FA]">
-        <CustomerSidebar />
-        <div className="flex-1 flex flex-col min-w-0">
-          <Navbar />
-          <main className="flex-1 overflow-y-auto">
-            <Routes>
-              <Route path="/customer/overview" element={<CustomerOverview />} />
-              <Route path="/customer/security" element={<CustomerSecurity />} />
-              <Route path="/customer/apis" element={<CustomerApis />} />
-              <Route path="/customer/playground" element={<CustomerPlayground />} />
-              <Route path="/customer/ip-allowlist" element={<CustomerIpAllowlist />} />
-              <Route path="/customer/usage" element={<CustomerUsage />} />
-              <Route path="/customer/logs" element={<CustomerLogs />} />
-              <Route path="/customer/tickets" element={<CustomerTickets />} />
-              <Route path="/customer/webhooks" element={<CustomerWebhooks />} />
-              <Route path="*" element={<Navigate to="/customer/overview" replace />} />
-            </Routes>
-          </main>
+      <UIProvider>
+        <div className="flex min-h-screen bg-[#050508] text-[#F5F3FA] selection:bg-[#A020F0] selection:text-white">
+          <CustomerSidebar />
+          <div className="flex-1 flex flex-col min-w-0">
+            <Navbar />
+            <main className="flex-1 overflow-y-auto">
+              <Routes>
+                <Route path="/customer/overview" element={<CustomerOverview />} />
+                <Route path="/customer/security" element={<CustomerSecurity />} />
+                <Route path="/customer/apis" element={<CustomerApis />} />
+                <Route path="/customer/playground" element={<CustomerPlayground />} />
+                <Route path="/customer/ip-allowlist" element={<CustomerIpAllowlist />} />
+                <Route path="/customer/usage" element={<CustomerUsage />} />
+                <Route path="/customer/logs" element={<CustomerLogs />} />
+                <Route path="/customer/tickets" element={<CustomerTickets />} />
+                <Route path="/customer/webhooks" element={<CustomerWebhooks />} />
+                <Route path="*" element={<Navigate to="/customer/overview" replace />} />
+              </Routes>
+            </main>
+          </div>
+          <CommandPalette />
         </div>
-      </div>
+      </UIProvider>
     );
   }
 
   // Super Admin Portal
   return (
-    <div className="flex min-h-screen bg-[#050508] text-[#F5F3FA]">
-      <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        <Navbar />
-        <main className="flex-1 overflow-y-auto">
-          <Routes>
-            <Route path="/admin/overview" element={<AdminOverview />} />
-            <Route path="/admin/security" element={<AdminSecurityMonitor />} />
-            <Route path="/admin/hosting" element={<AdminHosting />} />
-            <Route path="/admin/customers" element={<AdminCustomers />} />
-            <Route path="/admin/apis" element={<AdminApis />} />
-            <Route path="/admin/subscriptions" element={<AdminSubscriptions />} />
-            <Route path="/admin/payments" element={<AdminPayments />} />
-            <Route path="/admin/analytics" element={<AdminAnalytics />} />
-            <Route path="/admin/logs" element={<AdminLogs />} />
-            <Route path="/admin/health" element={<AdminHealth />} />
-            <Route path="/admin/tickets" element={<AdminTickets />} />
-            <Route path="/admin/system" element={<AdminSystem />} />
-            <Route path="/admin/backups" element={<AdminBackups />} />
-            <Route path="/admin/audit" element={<AdminAudit />} />
-            <Route path="/admin/maintenance" element={<AdminMaintenance />} />
-            <Route path="*" element={<Navigate to="/admin/overview" replace />} />
-          </Routes>
-        </main>
+    <UIProvider>
+      <div className="flex min-h-screen bg-[#050508] text-[#F5F3FA] selection:bg-[#A020F0] selection:text-white">
+        <Sidebar />
+        <div className="flex-1 flex flex-col min-w-0">
+          <Navbar />
+          <main className="flex-1 overflow-y-auto">
+            <Routes>
+              <Route path="/admin/overview" element={<AdminOverview />} />
+              <Route path="/admin/security" element={<AdminSecurityMonitor />} />
+              <Route path="/admin/hosting" element={<AdminHosting />} />
+              <Route path="/admin/customers" element={<AdminCustomers />} />
+              <Route path="/admin/apis" element={<AdminApis />} />
+              <Route path="/admin/subscriptions" element={<AdminSubscriptions />} />
+              <Route path="/admin/payments" element={<AdminPayments />} />
+              <Route path="/admin/analytics" element={<AdminAnalytics />} />
+              <Route path="/admin/logs" element={<AdminLogs />} />
+              <Route path="/admin/health" element={<AdminHealth />} />
+              <Route path="/admin/tickets" element={<AdminTickets />} />
+              <Route path="/admin/system" element={<AdminSystem />} />
+              <Route path="/admin/backups" element={<AdminBackups />} />
+              <Route path="/admin/audit" element={<AdminAudit />} />
+              <Route path="/admin/maintenance" element={<AdminMaintenance />} />
+              <Route path="*" element={<Navigate to="/admin/overview" replace />} />
+            </Routes>
+          </main>
+        </div>
+        <CommandPalette />
       </div>
-    </div>
+    </UIProvider>
   );
 };

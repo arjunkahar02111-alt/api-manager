@@ -8,17 +8,19 @@ export const AdminOverview: React.FC = () => {
   const [stats, setStats] = useState<any>(null);
   const [trends, setTrends] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [timeRange, setTimeRange] = useState<'1h' | '24h' | '7d' | '30d'>('7d');
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchOverview();
+    fetchOverview(timeRange);
   }, []);
 
-  const fetchOverview = async () => {
+  const fetchOverview = async (range = timeRange) => {
     setLoading(true);
+    const daysParam = range === '30d' ? 30 : range === '7d' ? 7 : 1;
     const [resOverview, resTrends] = await Promise.all([
       apiRequest('/api/v1/admin/analytics', {}, 'admin'),
-      apiRequest('/api/v1/admin/analytics/trends?days=7', {}, 'admin'),
+      apiRequest(`/api/v1/admin/analytics/trends?days=${daysParam}`, {}, 'admin'),
     ]);
 
     if (resOverview.success) setStats(resOverview.data);
@@ -63,12 +65,34 @@ export const AdminOverview: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={fetchOverview}
-          className="self-start md:self-auto px-4 py-2 bg-[#121212] border-2 border-white hover:bg-[#A020F0] hover:border-[#A020F0] text-white text-xs font-bold uppercase tracking-widest transition-colors font-mono"
-        >
-          [ REFRESH TELEMETRY ]
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Time Range Filter */}
+          <div className="flex items-center bg-[#100D17] border-2 border-[#1F1930] p-1">
+            {(['1h', '24h', '7d', '30d'] as const).map((range) => (
+              <button
+                key={range}
+                onClick={() => {
+                  setTimeRange(range);
+                  fetchOverview(range);
+                }}
+                className={`px-3 py-1 text-xs font-mono font-bold uppercase transition-colors ${
+                  timeRange === range
+                    ? 'bg-[#A020F0] text-white shadow-[0_0_10px_rgba(160,32,240,0.4)]'
+                    : 'text-[#A39BAD] hover:text-white hover:bg-[#1A1328]'
+                }`}
+              >
+                {range}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => fetchOverview(timeRange)}
+            className="px-4 py-2 bg-[#121212] border-2 border-white hover:bg-[#A020F0] hover:border-[#A020F0] text-white text-xs font-bold uppercase tracking-widest transition-colors font-mono"
+          >
+            [ REFRESH TELEMETRY ]
+          </button>
+        </div>
       </div>
 
       {/* VoiceBox Bold Action Cards */}

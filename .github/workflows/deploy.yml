@@ -1,0 +1,83 @@
+name: Karvion Enterprise CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+jobs:
+  validate-and-build:
+    name: Validate, Test & Build Monorepo
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.15.4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install Monorepo Dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Run Test Suite (Vitest)
+        run: pnpm test
+
+      - name: Build Monorepo (Packages, Apps, Frontend, Backend, Gateway)
+        run: pnpm run build
+
+  deploy-to-vps:
+    name: Zero-Downtime VPS Deployment
+    needs: validate-and-build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout Repository for Verification Scripts
+        uses: actions/checkout@v4
+
+      - name: Execute Remote Zero-Downtime Deployment via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        if: ${{ env.VPS_HOST != '' }}
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME || 'root' }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script_stop: true
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            APP_DIR="/var/www/arjun-api-manager"
+            echo ">>> [KARVION CI/CD] Starting automated production deployment..."
+            
+            if [ -d "$APP_DIR" ]; then
+              cd "$APP_DIR"
+            else
+              echo "Error: Directory $APP_DIR does not exist on VPS!"
+              exit 1
+            fi
+            
+            # Execute zero-downtime update script
+            chmod +x infrastructure/vps/update.sh
+            bash infrastructure/vps/update.sh
+            
+            # Run post-deployment verification probe
+            if [ -f scripts/post-deploy-verify.sh ]; then
+              chmod +x scripts/post-deploy-verify.sh
+              bash scripts/post-deploy-verify.sh
+            fi
+            
+            echo ">>> [KARVION CI/CD] Production deployment verified successfully! <<<"
