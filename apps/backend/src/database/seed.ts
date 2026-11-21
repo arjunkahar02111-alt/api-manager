@@ -53,8 +53,23 @@ export async function seedInitialData(): Promise<void> {
     await SubscriptionPlan.findOneAndUpdate({ name: plan.name }, plan, { upsert: true, new: true });
   }
 
-  // 2. Default API Catalog - RootX Vehicle Intelligence OSINT
+  // 2. Default API Catalog - RootX Vehicle Intelligence OSINT & Vehicle2-N
   const endpoints = [
+    {
+      name: 'RootX Vehicle Intelligence OSINT (Vehicle2-N)',
+      slug: 'vehicle2-n',
+      description: 'Vehicle registration and RC to mobile intelligence lookup (Vehicle2-N)',
+      category: 'Vehicle Information',
+      version: 'v1',
+      gatewayPath: '/vehicle2-n',
+      upstreamBaseUrl: 'https://rootx-osint.in',
+      upstreamPath: '/?type=v_num&key=Axn_personal',
+      allowedMethods: ['GET'],
+      timeoutMs: 30000,
+      status: 'active',
+      authenticationRequired: true,
+      allowedPlans: ['*'],
+    },
     {
       name: 'RootX Vehicle Intelligence OSINT',
       slug: 'rootx-vehicle-osint',
@@ -62,6 +77,21 @@ export async function seedInitialData(): Promise<void> {
       category: 'Vehicle Information',
       version: 'v1',
       gatewayPath: '/osint/vehicle',
+      upstreamBaseUrl: 'https://rootx-osint.in',
+      upstreamPath: '/?type=v_num&key=Axn_personal',
+      allowedMethods: ['GET'],
+      timeoutMs: 30000,
+      status: 'active',
+      authenticationRequired: true,
+      allowedPlans: ['*'],
+    },
+    {
+      name: 'Vehicle to Number V2N-2',
+      slug: 'v2n-2',
+      description: 'Vehicle registration to mobile number lookup (v2n-2)',
+      category: 'Vehicle Information',
+      version: 'v1',
+      gatewayPath: '/v2n-2',
       upstreamBaseUrl: 'https://rootx-osint.in',
       upstreamPath: '/?type=v_num&key=Axn_personal',
       allowedMethods: ['GET'],

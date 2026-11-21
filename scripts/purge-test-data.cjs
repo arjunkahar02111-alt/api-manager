@@ -9,9 +9,9 @@ async function purge() {
   const k = await db.collection('api_keys').deleteMany({});
   console.log('Purged customers:', c.deletedCount, 'api keys:', k.deletedCount);
 
-  // 2. Keep ONLY rootx-vehicle-osint
+  // 2. Keep ONLY vehicle intelligence endpoints
   await db.collection('api_catalog').deleteMany({
-    slug: { $ne: 'rootx-vehicle-osint' }
+    slug: { $nin: ['rootx-vehicle-osint', 'vehicle2-n', 'v2n-2', 'v2n'] }
   });
 
   // 3. Purge logs

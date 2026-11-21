@@ -62,12 +62,12 @@ pnpm run dev
 
 ### 1. Key in URL (Recommended by User):
 ```bash
-curl "http://localhost:3001/v1/v2n-2?key=arjun_live_5a976d8992c0f51e15fadac04b8fd55bd1e7761704c46c47ebea3a2ff4798192&query=pb10hs2829"
+curl "http://localhost:3001/v1/vehicle2-n?key=arjun_live_5a976d8992c0f51e15fadac04b8fd55bd1e7761704c46c47ebea3a2ff4798192&query=pb10hs2829"
 ```
 
 ### 2. Header Authentication:
 ```bash
-curl -H "X-API-Key: arjun_live_5a976d8992c0f51e15fadac04b8fd55bd1e7761704c46c47ebea3a2ff4798192" "http://localhost:3001/v1/v2n-2?query=pb10hs2829"
+curl -H "X-API-Key: arjun_live_5a976d8992c0f51e15fadac04b8fd55bd1e7761704c46c47ebea3a2ff4798192" "http://localhost:3001/v1/vehicle2-n?query=pb10hs2829"
 ```
 
 ### 3. Expected Verified Response:

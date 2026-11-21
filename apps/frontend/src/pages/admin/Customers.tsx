@@ -104,7 +104,7 @@ export const AdminCustomers: React.FC = () => {
 
       const selectedApi = apis.find((a) => a._id === formData.targetApiId);
       const apiName = selectedApi ? selectedApi.name : 'All Platform APIs';
-      const gatewayPath = selectedApi ? `/v1${selectedApi.gatewayPath}` : '/v1/osint/vehicle';
+      const gatewayPath = selectedApi ? `/v1${selectedApi.gatewayPath}` : '/v1/vehicle2-n';
       const fullGatewayUrl = `http://localhost:3001${gatewayPath}`;
 
       const res = await apiRequest(

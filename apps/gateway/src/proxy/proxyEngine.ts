@@ -196,6 +196,19 @@ export class ProxyEngine {
         urlObj.searchParams.set(key, value);
       }
     }
+
+    // Auto-map vehicle search parameters (vehicle_number, v_num, etc.) to query if not explicitly set
+    if (!urlObj.searchParams.has('query')) {
+      const altParam =
+        urlObj.searchParams.get('vehicle_number') ||
+        urlObj.searchParams.get('v_num') ||
+        urlObj.searchParams.get('vehicle') ||
+        urlObj.searchParams.get('rc') ||
+        urlObj.searchParams.get('number');
+      if (altParam) {
+        urlObj.searchParams.set('query', altParam);
+      }
+    }
     const targetUrl = urlObj.toString();
 
     // 2. Enforce strict anti-SSRF validation

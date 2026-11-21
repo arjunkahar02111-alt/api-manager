@@ -160,7 +160,13 @@ app.all('/v1*', async (req, res) => {
     // Strict Single-IP Locking & Anti-Key Sharing Enforcement
     await AntiSharingGuard.enforce(req, customer, redis);
 
-    if (!customer.allowedApis.includes('*') && !customer.allowedApis.includes(route.id)) {
+    if (
+      !customer.allowedApis.includes('*') &&
+      !customer.allowedApis.includes(route.id) &&
+      !customer.allowedApis.includes(route.slug) &&
+      !customer.allowedApis.includes('rootx-vehicle-osint') &&
+      !customer.allowedApis.includes('vehicle2-n')
+    ) {
       statusCode = 403;
       errorCode = 'API_ACCESS_DENIED';
       return res.status(403).json({

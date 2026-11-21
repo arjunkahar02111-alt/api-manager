@@ -25,6 +25,8 @@ describe('Enterprise Security & Acceptance Verification Suite', () => {
     mongoServer = await MongoMemoryServer.create();
     await mongoose.connect(mongoServer.getUri());
     redis = new (RedisMock as any)();
+    await ApiKey.init();
+    await Customer.init();
   });
 
   afterAll(async () => {
