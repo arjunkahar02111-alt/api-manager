@@ -58,9 +58,13 @@ pm2 reload infrastructure/pm2/ecosystem.config.cjs --update-env
 pm2 save
 log_success "PM2 cluster processes reloaded."
 
-# 5. Reload Nginx
+# 5. Sync and Reload Nginx
 if command -v nginx &>/dev/null; then
-    log_info "Validating and reloading Nginx..."
+    log_info "Synchronizing and reloading Nginx configuration..."
+    if [[ -d /etc/nginx/sites-available ]]; then
+        cp infrastructure/nginx/api.karviontechnologies.in.conf /etc/nginx/sites-available/api.karviontechnologies.in.conf || true
+        ln -sf /etc/nginx/sites-available/api.karviontechnologies.in.conf /etc/nginx/sites-enabled/ || true
+    fi
     nginx -t && systemctl reload nginx
 fi
 
@@ -72,6 +76,7 @@ if [[ -f scripts/post-deploy-verify.sh ]]; then
 fi
 
 # 7. Discord Webhook Notification
+UPDATE_STATUS="SUCCESS"
 if [[ -n "${DISCORD_WEBHOOK}" ]]; then
     curl -s -X POST -H "Content-Type: application/json" -d "{
         \"embeds\": [{

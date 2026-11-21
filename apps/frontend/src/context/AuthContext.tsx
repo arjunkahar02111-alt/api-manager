@@ -26,6 +26,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const custUser = localStorage.getItem('arjun_customer_user');
 
     if (adminToken && adminUser) {
+      try {
+        // Safely check JWT expiry to prevent mounting dashboard with dead session
+        const payloadPart = adminToken.split('.')[1];
+        if (payloadPart) {
+          const base64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+          const jsonPayload = decodeURIComponent(
+            atob(base64)
+              .split('')
+              .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+              .join('')
+          );
+          const payload = JSON.parse(jsonPayload);
+          if (payload.exp && payload.exp * 1000 < Date.now()) {
+            // Token has expired
+            localStorage.removeItem('arjun_admin_token');
+            localStorage.removeItem('arjun_admin_user');
+            setRole(null);
+            setUser(null);
+            setToken(null);
+            setIsLoading(false);
+            return;
+          }
+        }
+      } catch {
+        // Corrupted token format
+        localStorage.removeItem('arjun_admin_token');
+        localStorage.removeItem('arjun_admin_user');
+        setRole(null);
+        setUser(null);
+        setToken(null);
+        setIsLoading(false);
+        return;
+      }
+
       setRole('super_admin');
       setToken(adminToken);
       setUser(JSON.parse(adminUser));
