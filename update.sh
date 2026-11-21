@@ -42,8 +42,10 @@ fi
 
 # 2. Install Monorepo Dependencies
 log_info "Updating Node.js monorepo dependencies..."
+git config --global --add safe.directory '*' >/dev/null 2>&1 || true
+pnpm config set strict-dep-builds false >/dev/null 2>&1 || true
 pnpm config set ignore-scripts false >/dev/null 2>&1 || true
-pnpm install
+pnpm install --config.strict-dep-builds=false
 
 # 3. Compile Packages & TypeScript
 log_info "Compiling all monorepo packages, frontend, backend, gateway, and worker..."

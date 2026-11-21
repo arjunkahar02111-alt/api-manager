@@ -50,6 +50,10 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 phase1_preflight() {
     log_info "==> Phase 1/7: Running Pre-Flight Environment Checks..."
 
+    # Configure Git safe directory globally to avoid dubious ownership issues across users
+    git config --global --add safe.directory '*' >/dev/null 2>&1 || true
+    git config --global --add safe.directory "${INSTALL_DIR}" >/dev/null 2>&1 || true
+
     # Check EUID
     if [[ $EUID -ne 0 ]]; then
         log_error "This installer must be run with root privileges (sudo bash install.sh)."
@@ -299,8 +303,9 @@ phase4_app_setup() {
     # Install dependencies & build
     log_info "Installing monorepo dependencies via pnpm..."
     chown -R "${APP_USER}:${APP_USER}" "${INSTALL_DIR}"
+    sudo -u "${APP_USER}" env "PATH=$PATH" pnpm config set strict-dep-builds false >/dev/null 2>&1 || true
     sudo -u "${APP_USER}" env "PATH=$PATH" pnpm config set ignore-scripts false >/dev/null 2>&1 || true
-    sudo -u "${APP_USER}" env "PATH=$PATH" pnpm install
+    sudo -u "${APP_USER}" env "PATH=$PATH" pnpm install --config.strict-dep-builds=false
 
     log_info "Compiling all TypeScript packages, frontend, backend, gateway, and worker..."
     sudo -u "${APP_USER}" env "PATH=$PATH" pnpm run build
