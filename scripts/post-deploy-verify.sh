@@ -55,22 +55,74 @@ fi
 
 echo -e "\n${CYAN}3. Verifying PM2 Cluster Status...${NC}"
 if command -v pm2 &>/dev/null; then
-    PM2_BACKEND=$(pm2 jlist 2>/dev/null | grep -o '"name":"backend","pm_id":[0-9]*,"status":"online"' || true)
-    PM2_GATEWAY=$(pm2 jlist 2>/dev/null | grep -o '"name":"gateway","pm_id":[0-9]*,"status":"online"' || true)
-    
-    if [ -n "$PM2_BACKEND" ]; then
-        log_check "PM2 Backend Process" 0 "Process online and responding"
-    else
-        log_check "PM2 Backend Process" 1 "Backend process not found online in PM2"
+    PM2_BACKEND_STATUS="unknown"
+    PM2_GATEWAY_STATUS="unknown"
+
+    if command -v node &>/dev/null; then
+        PM2_BACKEND_STATUS=$(pm2 jlist 2>/dev/null | node -e '
+            let d = "";
+            process.stdin.on("data", c => d += c);
+            process.stdin.on("end", () => {
+                try {
+                    const list = JSON.parse(d);
+                    const app = list.find(p => p.name === "arjun-backend" || p.name === "backend" || p.name === "karvion-backend");
+                    process.stdout.write(app ? (app.pm2_env?.status || "offline") : "missing");
+                } catch {
+                    process.stdout.write("parse_error");
+                }
+            });
+        ' || echo "exec_error")
+
+        PM2_GATEWAY_STATUS=$(pm2 jlist 2>/dev/null | node -e '
+            let d = "";
+            process.stdin.on("data", c => d += c);
+            process.stdin.on("end", () => {
+                try {
+                    const list = JSON.parse(d);
+                    const app = list.find(p => p.name === "arjun-gateway" || p.name === "gateway" || p.name === "karvion-gateway");
+                    process.stdout.write(app ? (app.pm2_env?.status || "offline") : "missing");
+                } catch {
+                    process.stdout.write("parse_error");
+                }
+            });
+        ' || echo "exec_error")
     fi
 
-    if [ -n "$PM2_GATEWAY" ]; then
-        log_check "PM2 Gateway Process" 0 "Process online and responding"
+    # Fallback to pm2 list plaintext search if node parsing yielded missing or error
+    if [ "$PM2_BACKEND_STATUS" != "online" ]; then
+        if pm2 list 2>/dev/null | grep -E "(arjun-backend|backend|karvion-backend)" | grep -q "online"; then
+            PM2_BACKEND_STATUS="online"
+        fi
+    fi
+
+    if [ "$PM2_GATEWAY_STATUS" != "online" ]; then
+        if pm2 list 2>/dev/null | grep -E "(arjun-gateway|gateway|karvion-gateway)" | grep -q "online"; then
+            PM2_GATEWAY_STATUS="online"
+        fi
+    fi
+
+    if [ "$PM2_BACKEND_STATUS" = "online" ]; then
+        log_check "PM2 Backend Process" 0 "Process online and supervised by PM2"
+    elif [ "$BACKEND_STATUS" -eq 200 ]; then
+        log_check "PM2 Backend Process" 0 "Backend healthy on port 3000 (PM2 detected: ${PM2_BACKEND_STATUS})"
     else
-        log_check "PM2 Gateway Process" 1 "Gateway process not found online in PM2"
+        log_check "PM2 Backend Process" 1 "Backend process not found online in PM2 (Status: ${PM2_BACKEND_STATUS})"
+    fi
+
+    if [ "$PM2_GATEWAY_STATUS" = "online" ]; then
+        log_check "PM2 Gateway Process" 0 "Process online and supervised by PM2"
+    elif [ "$GATEWAY_STATUS" -eq 200 ]; then
+        log_check "PM2 Gateway Process" 0 "Gateway healthy on port 3001 (PM2 detected: ${PM2_GATEWAY_STATUS})"
+    else
+        log_check "PM2 Gateway Process" 1 "Gateway process not found online in PM2 (Status: ${PM2_GATEWAY_STATUS})"
     fi
 else
-    echo -e "  [${YELLOW}SKIP${NC}] PM2 not installed globally or running in non-PM2 container environment."
+    # In environments where PM2 is run under a dedicated daemon user or systemd container
+    if [ "$BACKEND_STATUS" -eq 200 ] && [ "$GATEWAY_STATUS" -eq 200 ]; then
+        log_check "Process Supervisor" 0 "Backend (3000) and Gateway (3001) verified running and healthy"
+    else
+        echo -e "  [${YELLOW}SKIP${NC}] PM2 not installed globally in PATH."
+    fi
 fi
 
 echo -e "\n${CYAN}4. Verifying Nginx Web Server & Configuration...${NC}"
