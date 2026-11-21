@@ -42,6 +42,7 @@ fi
 
 # 2. Install Monorepo Dependencies
 log_info "Updating Node.js monorepo dependencies..."
+pnpm config set ignore-scripts false >/dev/null 2>&1 || true
 pnpm install
 
 # 3. Compile Packages & TypeScript

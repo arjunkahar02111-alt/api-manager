@@ -299,6 +299,7 @@ phase4_app_setup() {
     # Install dependencies & build
     log_info "Installing monorepo dependencies via pnpm..."
     chown -R "${APP_USER}:${APP_USER}" "${INSTALL_DIR}"
+    sudo -u "${APP_USER}" env "PATH=$PATH" pnpm config set ignore-scripts false >/dev/null 2>&1 || true
     sudo -u "${APP_USER}" env "PATH=$PATH" pnpm install
 
     log_info "Compiling all TypeScript packages, frontend, backend, gateway, and worker..."
