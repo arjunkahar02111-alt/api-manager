@@ -32,8 +32,8 @@ export class KeyValidator {
   }
 
   extractApiKey(req: Request): string | null {
-    // 1. URL query parameters: ?key=..., ?api_key=..., ?apiKey=..., ?token=...
-    const queryKey = req.query.key || req.query.api_key || req.query.apiKey || req.query.token;
+    // 1. URL query parameters: ?key=..., ?api_key=..., ?apiKey=..., ?token=..., ?k=...
+    const queryKey = req.query.key || req.query.api_key || req.query.apiKey || req.query.token || req.query.k;
     if (typeof queryKey === 'string' && queryKey.trim()) {
       return queryKey.trim();
     }
@@ -57,17 +57,17 @@ export class KeyValidator {
     if (req.body) {
       try {
         if (typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
-          const bodyKey = (req.body as any).key || (req.body as any).api_key || (req.body as any).apiKey;
+          const bodyKey = (req.body as any).key || (req.body as any).api_key || (req.body as any).apiKey || (req.body as any).k;
           if (typeof bodyKey === 'string' && bodyKey.trim()) return bodyKey.trim();
         } else if (Buffer.isBuffer(req.body)) {
           const text = req.body.toString('utf-8');
           if (text.startsWith('{')) {
             const parsed = JSON.parse(text);
-            const bodyKey = parsed.key || parsed.api_key || parsed.apiKey;
+            const bodyKey = parsed.key || parsed.api_key || parsed.apiKey || parsed.k;
             if (typeof bodyKey === 'string' && bodyKey.trim()) return bodyKey.trim();
           } else if (text.includes('=')) {
             const params = new URLSearchParams(text);
-            const bodyKey = params.get('key') || params.get('api_key') || params.get('apiKey');
+            const bodyKey = params.get('key') || params.get('api_key') || params.get('apiKey') || params.get('k');
             if (bodyKey && bodyKey.trim()) return bodyKey.trim();
           }
         }

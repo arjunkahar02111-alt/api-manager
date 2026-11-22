@@ -13,6 +13,11 @@ const ApiCatalogSchema = new Schema<ApiCatalogDocument>(
     gatewayPath: { type: String, required: true, unique: true, index: true },
     upstreamBaseUrl: { type: String, required: true },
     upstreamPath: { type: String, default: '' },
+    upstreamMethod: {
+      type: String,
+      enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+      default: undefined,
+    },
     allowedMethods: {
       type: [String],
       enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],

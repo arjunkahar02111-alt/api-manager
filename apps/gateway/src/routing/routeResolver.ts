@@ -16,6 +16,7 @@ export interface RouteConfig {
   gatewayPath: string;
   upstreamBaseUrl: string;
   upstreamPath: string;
+  upstreamMethod?: string;
   allowedMethods: string[];
   timeoutMs: number;
   maxRequestBytes: number;
@@ -27,6 +28,8 @@ export interface RouteConfig {
   parameterDefinitions?: ParameterDefinition[];
   requestBodyType?: string;
   responseEnvelope?: 'preserve' | 'wrap' | 'header_only';
+  originalCurl?: string;
+  sampleRequest?: any;
 }
 
 export interface ResolvedRoute {
@@ -89,6 +92,7 @@ export class RouteResolver {
           gatewayPath: api.gatewayPath,
           upstreamBaseUrl: api.upstreamBaseUrl,
           upstreamPath: api.upstreamPath || '',
+          upstreamMethod: api.upstreamMethod || (api.allowedMethods?.[0] ?? 'GET'),
           allowedMethods: api.allowedMethods || ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
           timeoutMs: api.timeoutMs || 30000,
           maxRequestBytes: api.maxRequestBytes || 10485760,
@@ -100,6 +104,8 @@ export class RouteResolver {
           parameterDefinitions: api.parameterDefinitions,
           requestBodyType: api.requestBodyType,
           responseEnvelope: api.responseEnvelope || 'preserve',
+          originalCurl: api.originalCurl,
+          sampleRequest: api.sampleRequest,
         };
 
         await this.redis.set(cacheKey, JSON.stringify(routeConfig), 'EX', 60);

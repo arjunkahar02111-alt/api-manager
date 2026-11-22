@@ -200,22 +200,27 @@ export class CatalogService {
     adminUsername = 'admin',
     sourceIp = '127.0.0.1'
   ) {
-    let urlObj: URL;
-    try {
-      urlObj = new URL(targetUrl.trim());
-    } catch {
-      throw new Error('Invalid URL. Please enter a valid HTTP/HTTPS URL (e.g. https://api.example.com/v1/resource)');
+    const rawInput = targetUrl.trim();
+    if (!rawInput) {
+      throw new Error('Please enter an API URL or cURL command.');
     }
 
-    const upstreamBaseUrl = urlObj.origin;
-    const upstreamPath = urlObj.pathname;
+    // 1. Analyze the input universally (URL, cURL, OpenAPI, with/without key)
+    const analyzed = UniversalRequestAnalyzer.analyze(rawInput);
 
-    const hostParts = urlObj.hostname.replace(/^www\./, '').split('.');
-    const baseDomain = hostParts[0] || 'service';
+    const upstreamBaseUrl = analyzed.upstreamBaseUrl;
+    const upstreamPath = analyzed.upstreamPath;
+
+    let baseDomain = 'service';
+    try {
+      const parsedUrl = new URL(upstreamBaseUrl);
+      const hostParts = parsedUrl.hostname.replace(/^www\./, '').split('.');
+      baseDomain = hostParts[0] === 'api' && hostParts[1] ? hostParts[1] : hostParts[0] || 'service';
+    } catch {}
 
     const name = customName && customName.trim()
       ? customName.trim()
-      : `${baseDomain.charAt(0).toUpperCase() + baseDomain.slice(1)} API`;
+      : (analyzed.name || `${baseDomain.charAt(0).toUpperCase() + baseDomain.slice(1)} API`);
 
     let baseSlug = name.toLowerCase().replace(/[^a-z0-9-_]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
     if (!baseSlug) baseSlug = `${baseDomain.toLowerCase()}-api`;
@@ -230,7 +235,6 @@ export class CatalogService {
       gatewayPath = `/${slug}`;
     }
 
-    const analyzed = UniversalRequestAnalyzer.analyze(targetUrl.trim());
     let authConfig = analyzed.authConfig;
     if (analyzed.parameterMappings) {
       const secretMapping = analyzed.parameterMappings.find(
@@ -238,7 +242,7 @@ export class CatalogService {
       );
       if (secretMapping && secretMapping.staticValue) {
         authConfig = {
-          type: 'api_key_query',
+          type: secretMapping.providerIn === 'header' ? 'api_key_header' : 'api_key_query',
           paramName: secretMapping.providerName,
           encryptedCredential: encryptSecret(String(secretMapping.staticValue)),
           credentialPrefix: '••••••••',
@@ -249,12 +253,13 @@ export class CatalogService {
     const api = await ApiCatalog.create({
       name,
       slug,
-      description: `Auto-connected gateway for ${upstreamBaseUrl}`,
+      description: `Universal Gateway for ${upstreamBaseUrl}`,
       category: customCategory || 'Main APIs',
       version: 'v1',
       gatewayPath,
       upstreamBaseUrl,
       upstreamPath,
+      upstreamMethod: (analyzed.method as any) || 'GET',
       allowedMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
       timeoutMs: 30000,
       status: 'active',
@@ -263,6 +268,13 @@ export class CatalogService {
       authConfig,
       parameterDefinitions: analyzed.parameterDefinitions,
       parameterMappings: analyzed.parameterMappings,
+      requestBodyType: analyzed.requestBodyType,
+      originalCurl: rawInput.startsWith('curl') ? rawInput : `curl "${rawInput}"`,
+      sampleRequest: {
+        queryParams: analyzed.sampleQueryParams,
+        headers: analyzed.sampleHeaders,
+        body: analyzed.sampleBody,
+      },
       cachePolicy: { enabled: true, ttlSeconds: 60, cacheMethods: ['GET'], respectUpstreamCacheControl: true },
       responseEnvelope: 'wrap',
     });

@@ -290,10 +290,10 @@ export const AdminApis: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
             <div className="md:col-span-8">
               <label className="block text-[11px] font-bold text-white uppercase tracking-[0.1em] mb-2 font-mono">
-                Main Upstream API URL <span className="text-[#EF4444]">*</span>
+                Main Upstream API URL or cURL <span className="text-[#EF4444]">*</span>
               </label>
               <input
-                type="url"
+                type="text"
                 required
                 value={quickUrl}
                 onChange={(e) => setQuickUrl(e.target.value)}

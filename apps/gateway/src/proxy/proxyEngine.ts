@@ -52,10 +52,49 @@ const SEARCH_SYNONYMS = [
   'vehicle_number',
   'vehicle',
   'rc',
+  'rc_number',
+  'rc_num',
+  'rcno',
   'number',
+  'num',
+  'id',
   'input',
   'keyword',
   'text',
+  'license',
+  'reg_no',
+  'regno',
+  'reg_num',
+  'registration_number',
+  'challan_no',
+  'challan',
+  'challan_number',
+  'dl_no',
+  'dl',
+  'dlno',
+  'driving_license',
+  'pan_no',
+  'pan',
+  'panno',
+  'aadhaar',
+  'aadhar',
+  'aadhaar_no',
+  'uid',
+  'epic',
+  'voter_id',
+  'voter',
+  'mobile',
+  'phone',
+  'phone_number',
+  'fastag',
+  'car_number',
+  'car_no',
+  'vehicleno',
+  'vehicle_num',
+  'target',
+  'data',
+  'value',
+  'val',
 ];
 
 // Decompress upstream binary response (zstd, brotli, gzip, deflate) into a clean Buffer
@@ -289,13 +328,31 @@ export class ProxyEngine {
       }
     }
 
-    // Comprehensive client search parameter extraction across synonyms, arbitrary query keys, and subPath
+    // Parse incoming request body if JSON
+    let parsedJsonBody: any = undefined;
+    let isJsonRequestBody = false;
+    if (req.body) {
+      if (typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+        parsedJsonBody = { ...req.body };
+        isJsonRequestBody = true;
+      } else {
+        const rawStr = Buffer.isBuffer(req.body) ? req.body.toString('utf-8') : String(req.body);
+        if (rawStr.trim().startsWith('{') || rawStr.trim().startsWith('[')) {
+          try {
+            parsedJsonBody = JSON.parse(rawStr);
+            isJsonRequestBody = typeof parsedJsonBody === 'object' && parsedJsonBody !== null;
+          } catch {}
+        }
+      }
+    }
+
+    // Comprehensive client search parameter extraction across synonyms, arbitrary query keys, body, and subPath
     let clientSearchVal: string | undefined = undefined;
 
-    // 1. Check known search synonyms in client request
+    // 1. Check known search synonyms in client request query parameters
     for (const syn of SEARCH_SYNONYMS) {
       const val = incomingClientParams.get(syn);
-      if (typeof val === 'string' && val.trim().length > 0) {
+      if (typeof val === 'string' && val.trim().length > 0 && !val.startsWith('arjun_')) {
         clientSearchVal = val.trim();
         break;
       }
@@ -304,7 +361,7 @@ export class ProxyEngine {
     // 2. Check if client passed any single non-auth query parameter (e.g. ?car=... or ?license=...)
     if (!clientSearchVal) {
       for (const [k, v] of incomingClientParams.entries()) {
-        const lk = k.toLowerCase();
+        const lk = k.toLowerCase().replace(/[-_]/g, '');
         if (
           lk !== 'api_key' &&
           lk !== 'apikey' &&
@@ -312,9 +369,10 @@ export class ProxyEngine {
           lk !== 'token' &&
           lk !== 'secret' &&
           lk !== 'auth' &&
-          lk !== 'authorization'
+          lk !== 'authorization' &&
+          lk !== 'k'
         ) {
-          if (typeof v === 'string' && v.trim().length > 0) {
+          if (typeof v === 'string' && v.trim().length > 0 && !v.startsWith('arjun_')) {
             clientSearchVal = v.trim();
             break;
           }
@@ -322,27 +380,41 @@ export class ProxyEngine {
       }
     }
 
-    // 3. Check if search parameter was passed via path segment (e.g. /v1/vehicle/PB10HS2829)
-    if (!clientSearchVal && subPath && subPath.trim().length > 1) {
-      const pathSegment = subPath.replace(/^\/+/, '').split('/')[0];
-      if (pathSegment && pathSegment.trim().length > 0) {
-        clientSearchVal = pathSegment.trim();
+    // 3. Check if search parameter was passed via JSON request body
+    if (!clientSearchVal && isJsonRequestBody && parsedJsonBody && typeof parsedJsonBody === 'object') {
+      for (const syn of SEARCH_SYNONYMS) {
+        if (parsedJsonBody[syn] !== undefined && typeof parsedJsonBody[syn] === 'string' && parsedJsonBody[syn].trim().length > 0) {
+          clientSearchVal = parsedJsonBody[syn].trim();
+          break;
+        }
+      }
+      if (!clientSearchVal) {
+        for (const [bk, bv] of Object.entries(parsedJsonBody)) {
+          const lbk = bk.toLowerCase().replace(/[-_]/g, '');
+          if (
+            lbk !== 'api_key' &&
+            lbk !== 'apikey' &&
+            lbk !== 'key' &&
+            lbk !== 'token' &&
+            lbk !== 'secret' &&
+            lbk !== 'auth' &&
+            lbk !== 'authorization' &&
+            lbk !== 'k'
+          ) {
+            if (typeof bv === 'string' && bv.trim().length > 0 && !bv.startsWith('arjun_')) {
+              clientSearchVal = bv.trim();
+              break;
+            }
+          }
+        }
       }
     }
 
-    // Parse incoming request body if JSON
-    let parsedJsonBody: any = undefined;
-    let isJsonRequestBody = false;
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      const cType = String(req.headers['content-type'] || '').toLowerCase();
-      if (cType.includes('application/json') && req.body) {
-        try {
-          const rawStr = Buffer.isBuffer(req.body) ? req.body.toString('utf-8') : String(req.body);
-          if (rawStr.trim().startsWith('{') || rawStr.trim().startsWith('[')) {
-            parsedJsonBody = JSON.parse(rawStr);
-            isJsonRequestBody = typeof parsedJsonBody === 'object' && parsedJsonBody !== null;
-          }
-        } catch {}
+    // 4. Check if search parameter was passed via path segment (e.g. /v1/vehicle/PB10HS2829)
+    if (!clientSearchVal && subPath && subPath.trim().length > 1) {
+      const pathSegment = subPath.replace(/^\/+/, '').split('/')[0];
+      if (pathSegment && pathSegment.trim().length > 0 && !pathSegment.startsWith('arjun_')) {
+        clientSearchVal = pathSegment.trim();
       }
     }
 
@@ -604,6 +676,7 @@ export class ProxyEngine {
         lowerKey === 'api_key' ||
         lowerKey === 'apikey' ||
         (lowerKey === 'key' && (value.startsWith('arjun_') || urlObj.searchParams.has('key'))) ||
+        (lowerKey === 'k' && (value.startsWith('arjun_') || urlObj.searchParams.has('k'))) ||
         (lowerKey === 'token' && value.startsWith('arjun_'))
       ) {
         continue;
@@ -634,6 +707,18 @@ export class ProxyEngine {
     // 6. Universal Search & Query Parameter Synonym Bridging
     // Automatically populate and bridge parameters across formats (term, query, q, search, v_num, etc.)
     if (clientSearchVal) {
+      // 1. If urlObj.searchParams already contains any search synonym, update it with clientSearchVal
+      for (const [paramKey] of Array.from(urlObj.searchParams.entries())) {
+        if (SEARCH_SYNONYMS.includes(paramKey.toLowerCase())) {
+          urlObj.searchParams.set(paramKey, clientSearchVal);
+        }
+      }
+
+      // 2. Replace path template placeholders ({term}, :term, {rc_num}, :v_num, etc.) in pathname
+      urlObj.pathname = urlObj.pathname
+        .replace(/\{(\w+)\}/gi, clientSearchVal)
+        .replace(/:(\w+)/gi, clientSearchVal);
+
       const upstreamText = `${route.upstreamBaseUrl || ''} ${route.upstreamPath || ''} ${(route.parameterMappings || []).map((m: any) => `${m.providerName} ${m.clientName}`).join(' ')}`.toLowerCase();
 
       // Set any synonym mentioned in the upstream configuration
@@ -699,45 +784,136 @@ export class ProxyEngine {
 
     const targetUrl = urlObj.toString();
 
-    // 6. Strict Anti-SSRF Validation
+    // Strict Anti-SSRF Validation
     await validateUpstreamUrl(targetUrl);
 
-    // 7. Prepare universal request payload
+    // 7. Universal Method & Body Bridging
+    // Determine the upstream dispatch HTTP method:
+    let upstreamMethod = (req.method || 'GET').toUpperCase();
+    const configuredUpstreamMethod = ((route as any).upstreamMethod || '').toUpperCase();
+    const origCurl = ((route as any).originalCurl || '').toUpperCase();
+
+    if (configuredUpstreamMethod && configuredUpstreamMethod !== 'GET') {
+      upstreamMethod = configuredUpstreamMethod;
+    } else if (
+      origCurl.includes('-X POST') ||
+      origCurl.includes('--REQUEST POST') ||
+      origCurl.includes('-D ') ||
+      origCurl.includes('--DATA') ||
+      origCurl.includes('--JSON')
+    ) {
+      upstreamMethod = 'POST';
+    } else if (origCurl.includes('-X PUT') || origCurl.includes('--REQUEST PUT')) {
+      upstreamMethod = 'PUT';
+    } else if (origCurl.includes('-X DELETE') || origCurl.includes('--REQUEST DELETE')) {
+      upstreamMethod = 'DELETE';
+    } else if (route.requestBodyType === 'json' || route.requestBodyType === 'form-urlencoded') {
+      upstreamMethod = 'POST';
+    }
+
+    // Bidirectional Bridging:
+    // If upstream expects POST/PUT with body, but client called via GET or sent query params without body:
+    if ((upstreamMethod === 'POST' || upstreamMethod === 'PUT') && (!isJsonRequestBody || !parsedJsonBody)) {
+      if (!parsedJsonBody) {
+        parsedJsonBody = {};
+      }
+      for (const [k, v] of incomingClientParams.entries()) {
+        const lowerKey = k.toLowerCase();
+        if (
+          lowerKey !== 'api_key' &&
+          lowerKey !== 'apikey' &&
+          lowerKey !== 'token' &&
+          !(lowerKey === 'key' && v.startsWith('arjun_')) &&
+          !(lowerKey === 'k' && v.startsWith('arjun_'))
+        ) {
+          parsedJsonBody[k] = v;
+        }
+      }
+      const sampleBody = (route as any).sampleRequest?.body;
+      if (sampleBody && typeof sampleBody === 'object') {
+        for (const [sk, sv] of Object.entries(sampleBody)) {
+          if (parsedJsonBody[sk] === undefined) {
+            parsedJsonBody[sk] = sv;
+          }
+        }
+      }
+      if (clientSearchVal) {
+        parsedJsonBody.term = clientSearchVal;
+        parsedJsonBody.query = clientSearchVal;
+        parsedJsonBody.search = clientSearchVal;
+        parsedJsonBody.v_num = clientSearchVal;
+        parsedJsonBody.rc = clientSearchVal;
+        parsedJsonBody.rc_num = clientSearchVal;
+        parsedJsonBody.number = clientSearchVal;
+        parsedJsonBody.input = clientSearchVal;
+        parsedJsonBody.q = clientSearchVal;
+      }
+      if (!parsedJsonBody.type && urlObj.searchParams.has('type')) {
+        parsedJsonBody.type = urlObj.searchParams.get('type');
+      }
+      isJsonRequestBody = true;
+    }
+
+    // Vice-versa: If upstream expects GET (no body), but client sent POST with JSON body:
+    if (upstreamMethod === 'GET' && isJsonRequestBody && parsedJsonBody) {
+      for (const [bk, bv] of Object.entries(parsedJsonBody)) {
+        const lowerKey = bk.toLowerCase();
+        if (
+          lowerKey !== 'api_key' &&
+          lowerKey !== 'apikey' &&
+          lowerKey !== 'token' &&
+          !(lowerKey === 'key' && String(bv).startsWith('arjun_')) &&
+          !(lowerKey === 'k' && String(bv).startsWith('arjun_'))
+        ) {
+          if (typeof bv === 'string' || typeof bv === 'number' || typeof bv === 'boolean') {
+            urlObj.searchParams.set(bk, String(bv));
+          }
+        }
+      }
+    }
+
+    // Prepare universal request payload
     let requestBody: Buffer | undefined = undefined;
     let requestBytes = 0;
 
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
+    if (upstreamMethod !== 'GET' && upstreamMethod !== 'HEAD') {
       if (isJsonRequestBody && parsedJsonBody !== undefined) {
         const updatedJsonStr = JSON.stringify(parsedJsonBody);
         requestBody = Buffer.from(updatedJsonStr);
         requestBytes = requestBody.length;
         forwardedHeaders['content-type'] = 'application/json';
+        forwardedHeaders['content-length'] = String(requestBytes);
       } else if (Buffer.isBuffer(req.body) && req.body.length > 0) {
         requestBody = req.body;
         requestBytes = req.body.length;
         if (typeof req.headers['content-type'] === 'string') {
           forwardedHeaders['content-type'] = req.headers['content-type'];
         }
+        forwardedHeaders['content-length'] = String(requestBytes);
       } else if (typeof req.body === 'string' && req.body.length > 0) {
         requestBody = Buffer.from(req.body);
         requestBytes = requestBody.length;
         if (typeof req.headers['content-type'] === 'string') {
           forwardedHeaders['content-type'] = req.headers['content-type'];
         }
+        forwardedHeaders['content-length'] = String(requestBytes);
       } else if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
         const contentType = typeof req.headers['content-type'] === 'string' ? req.headers['content-type'].toLowerCase() : '';
         if (contentType.includes('application/x-www-form-urlencoded')) {
-          requestBody = Buffer.from(new URLSearchParams(req.body as any).toString());
-          forwardedHeaders['content-type'] =
-            typeof req.headers['content-type'] === 'string'
-              ? req.headers['content-type']
-              : 'application/x-www-form-urlencoded';
+          const formStr = new URLSearchParams(req.body as any).toString();
+          requestBody = Buffer.from(formStr);
+          forwardedHeaders['content-type'] = 'application/x-www-form-urlencoded';
+          forwardedHeaders['content-length'] = String(requestBody.length);
         } else {
           requestBody = Buffer.from(JSON.stringify(req.body));
           forwardedHeaders['content-type'] = 'application/json';
+          forwardedHeaders['content-length'] = String(requestBody.length);
         }
         requestBytes = requestBody.length;
       }
+    } else {
+      delete forwardedHeaders['content-type'];
+      delete forwardedHeaders['content-length'];
     }
 
     let responseBytes = 0;
@@ -747,9 +923,9 @@ export class ProxyEngine {
     const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
 
     try {
-      console.log(`[ProxyEngine] Dispatching to upstream: ${targetUrl}`);
+      console.log(`[ProxyEngine] Dispatching to upstream [${upstreamMethod}]: ${targetUrl}`);
       const { statusCode, headers, body } = await request(targetUrl, {
-        method: req.method as any,
+        method: upstreamMethod as any,
         headers: forwardedHeaders,
         body: requestBody,
         signal: abortController.signal,

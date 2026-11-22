@@ -136,6 +136,7 @@ export interface IApiCatalog {
   gatewayPath: string; // e.g., /user/info (mounted under /v1)
   upstreamBaseUrl: string; // e.g., https://upstream.example.com
   upstreamPath: string; // e.g., /api/user/info
+  upstreamMethod?: HttpMethod;
   allowedMethods: HttpMethod[];
   requestSchema?: Record<string, unknown>;
   responseSchema?: Record<string, unknown>;

@@ -9,7 +9,7 @@ import type {
   ParameterDataType,
 } from '@arjun/types';
 
-// Standard query and search parameter synonyms
+// Standard query and search parameter synonyms across all API formats
 const SEARCH_SYNONYMS = [
   'term',
   'query',
@@ -19,10 +19,49 @@ const SEARCH_SYNONYMS = [
   'vehicle_number',
   'vehicle',
   'rc',
+  'rc_number',
+  'rc_num',
+  'rcno',
   'number',
+  'num',
+  'id',
   'input',
   'keyword',
   'text',
+  'license',
+  'reg_no',
+  'regno',
+  'reg_num',
+  'registration_number',
+  'challan_no',
+  'challan',
+  'challan_number',
+  'dl_no',
+  'dl',
+  'dlno',
+  'driving_license',
+  'pan_no',
+  'pan',
+  'panno',
+  'aadhaar',
+  'aadhar',
+  'aadhaar_no',
+  'uid',
+  'epic',
+  'voter_id',
+  'voter',
+  'mobile',
+  'phone',
+  'phone_number',
+  'fastag',
+  'car_number',
+  'car_no',
+  'vehicleno',
+  'vehicle_num',
+  'target',
+  'data',
+  'value',
+  'val',
 ];
 
 export interface AnalyzedApiResult {
@@ -66,6 +105,7 @@ function detectDataType(value: any): ParameterDataType {
 function isLikelySecretKey(paramName: string): boolean {
   const lower = paramName.toLowerCase().replace(/[-_]/g, '');
   return (
+    lower === 'k' ||
     lower === 'key' ||
     lower === 'apikey' ||
     lower === 'xapikey' ||

@@ -643,4 +643,70 @@ describe('Universal Automated API Importer, Request Mapper & Response Cache Engi
     expect(rebranded.cached).toBe(true);
     expect(rebranded.response_time).toBe('12ms');
   });
+
+  // 30. Auto-connecting "With K" API (?k=...)
+  it('30. should auto-detect, encrypt, and map upstream secret key when provided as ?k=...', async () => {
+    const rawInput = 'https://api.vehicle-osint.in/v1/search?term=PB10HS2829&k=SECRET_KEY_ABC123';
+    const analyzed = UniversalRequestAnalyzer.analyze(rawInput);
+
+    expect(analyzed.upstreamBaseUrl).toBe('https://api.vehicle-osint.in');
+    expect(analyzed.upstreamPath).toBe('/v1/search');
+
+    // Verify secret credential ?k= is identified as provider credential
+    const secretMapping = analyzed.parameterMappings.find(
+      (m) => m.providerName === 'k' && m.isProviderCredential
+    );
+    expect(secretMapping).toBeDefined();
+    expect(secretMapping?.staticValue).toBe('SECRET_KEY_ABC123');
+
+    // Create API via auto-connect endpoint
+    const res = await request(app)
+      .post('/api/v1/admin/apis/auto-connect')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ targetUrl: rawInput, name: 'OSINT With K Test' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.authConfig.type).toBe('api_key_query');
+    expect(res.body.data.authConfig.paramName).toBe('k');
+
+    // Verify credential was encrypted
+    const saved = await ApiCatalog.findById(res.body.data._id);
+    expect(saved?.authConfig?.encryptedCredential).toBeDefined();
+    expect(decryptSecret(saved!.authConfig!.encryptedCredential!)).toBe('SECRET_KEY_ABC123');
+  });
+
+  // 31. Auto-connecting "Without K" (open/public API)
+  it('31. should smoothly auto-connect unauthenticated API without any key (Without K)', async () => {
+    const rawInput = 'https://dummyjson.com/products/search?q=phone';
+    const analyzed = UniversalRequestAnalyzer.analyze(rawInput);
+
+    expect(analyzed.upstreamBaseUrl).toBe('https://dummyjson.com');
+    expect(analyzed.upstreamPath).toBe('/products/search');
+    expect(analyzed.authConfig.type).toBe('none');
+
+    const res = await request(app)
+      .post('/api/v1/admin/apis/auto-connect')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ targetUrl: rawInput, name: 'Open Products API Without K' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.authConfig.type).toBe('none');
+
+    const saved = await ApiCatalog.findById(res.body.data._id);
+    expect(saved?.authConfig?.type).toBe('none');
+    expect(saved?.authConfig?.encryptedCredential).toBeUndefined();
+  });
+
+  // 32. Universal Method & Body Bridging analysis
+  it('32. should analyze cURL POST request with JSON body and bridge upstream method & body structure', () => {
+    const curl = `curl -X POST "https://api.vehicle-intelligence.io/v2/rc" -H "Content-Type: application/json" -d '{"v_num": "PB10HS2829", "type": "rc", "mode": "live"}'`;
+    const analyzed = UniversalRequestAnalyzer.analyze(curl);
+
+    expect(analyzed.method).toBe('POST');
+    expect(analyzed.requestBodyType).toBe('json');
+    expect(analyzed.parameterDefinitions.some((p) => p.name === 'v_num')).toBe(true);
+    expect(analyzed.sampleBody).toEqual({ v_num: 'PB10HS2829', type: 'rc', mode: 'live' });
+  });
 });
