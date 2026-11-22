@@ -4,14 +4,30 @@
 **Canonical Domain:** `https://api.karviontechnologies.in`  
 **Repository:** `https://github.com/arjunkahar02111-alt/api-manager.git`  
 **Branch:** `main`  
+**Latest Head Commit:** `81a9c55` (`fix(gateway): inject branded metadata and plan telemetry on quota exceeded and error responses`)
 
 ---
 
-## 1. Current State & Clean Working Tree
-* **Git Status:** Clean (`nothing to commit, working tree clean`).
-* **Remote Sync:** Fully up to date with `origin/main` on GitHub.
-* **Architecture:** 100% Admin-Only API-as-a-Service platform.
-* **UI/UX Integrity:** 100% preserved. Existing design system (`#050508`, `#100D17`, `#A020F0`, `#EF4444`, monospace typography, borders, and geometry) remains untouched.
+## 1. System Health & Working Tree Status
+* **Git Status:** 100% Clean (`nothing to commit, working tree clean`).
+* **Remote Sync:** Fully synchronized and pushed to `origin/main` on GitHub.
+* **Build Verification:** 7 of 7 packages build without errors (`@arjun/types`, `packages/schemas`, `@arjun/shared`, `apps/frontend`, `apps/backend`, `apps/gateway`, `apps/worker`).
+* **Test Verification:** **14 of 14 test suites passing (118 of 118 tests passing 100%)**:
+  * `tests/unit/gateway-response.test.ts`: 7/7 passed
+  * `tests/integration/universal-importer.test.ts`: 32/32 passed
+  * `tests/security/admin-security-waf.test.ts`: 17/17 passed
+  * `tests/integration/announcements-and-maintenance.test.ts`: 10/10 passed
+  * `tests/integration/developer-profile.test.ts`: 12/12 passed
+  * `tests/integration/e2e.test.ts`: 13/13 passed
+  * `tests/security/enterprise-acceptance.test.ts`: 8/8 passed
+  * `tests/security/anti-sharing.test.ts`: 4/4 passed
+  * `tests/unit/route-resolver.test.ts`: 5/5 passed
+  * `tests/unit/crypto.test.ts`: 5/5 passed
+  * `tests/unit/ip.test.ts`: 4/4 passed
+  * `tests/security/ssrf.test.ts`: 5/5 passed
+  * `tests/ui/responsive-ui.test.ts`: 4/4 passed
+  * `tests/security/redaction.test.ts`: 2/2 passed
+* **UI/UX Integrity:** 100% preserved. Monospaced typography, dark theme geometry (`#050508`, `#100D17`, `#A020F0`, `#EF4444`), zero UI breakage.
 
 ---
 
@@ -22,7 +38,7 @@
 * **Default Password:** `AdminStrongSecurePassword2026!`
 * **Fallback Passwords:** `Admin@123456` or `admin123`
 
-### Instant Password Reset (if ever locked out on VPS):
+### Emergency Password Reset (VPS):
 ```bash
 cd /var/www/arjun-api-manager && pnpm exec tsx -e "
 import mongoose from 'mongoose';
@@ -45,35 +61,54 @@ import { Administrator } from './apps/backend/src/database/models/index.js';
 
 ---
 
-## 3. Single-Line VPS Update Command
-To pull all updates and reload services without SSH terminal line-break issues:
+## 3. VPS Live Deployment Command
+To apply all latest updates to the production server:
 ```bash
-cd /var/www/arjun-api-manager && git pull origin main && bash update.sh
+cd /var/www/arjun-api-manager && bash update.sh
 ```
 
 ---
 
-## 4. Summary of Completed Features & Add-Ons
+## 4. Comprehensive Feature & Milestone Registry
 
-| Feature / Add-On | Description | Key Modules |
-| :--- | :--- | :--- |
-| **Emergency Broadcasts** | Real-time global broadcast engine with `critical` severity banners | `announcement.service.ts`, `Announcements.tsx` |
-| **P50 / P95 / P99 Latency Analytics** | High-precision latency percentile computation and peak TPS metrics | `analytics.service.ts`, `Analytics.tsx` |
-| **Deep Request Investigation** | Modal drill-down viewing raw request/response headers, body payloads, and status codes | `Logs.tsx`, `log.service.ts` |
-| **Telemetry Exporters** | 1-click export of system logs and telemetry into CSV and JSON | `Logs.tsx` |
-| **Bulk Client Operations** | Batch suspend, reactivate, rate-limit adjustments, and key rotation | `customer.service.ts`, `Customers.tsx` |
-| **Alert Deduplication Engine** | 15-minute sliding cooldown suppressing alert storms while tracking duplicate count | `alert.service.ts`, `Alert.ts` |
-| **SOC Incident Management** | Severity-based triage (`P1` to `P4`), SLA breach timers, and auto-resolution | `incident.service.ts`, `Incident.ts` |
-| **RFC 8594 Sunset Headers** | Standards-compliant `Sunset` and `Deprecation` response header engine | `responseConfig.service.ts`, `ResponseStudio.tsx` |
-| **SHA-256 Audit Chaining** | Tamper-evident cryptographic hash chaining for administrator actions | `audit.service.ts`, `AdminAuditLog.ts` |
-| **Real-time Client Management** | Instant hard deletion, auto-purging of legacy records, and WebSocket synchronization | `Customers.tsx`, `RealtimeContext.tsx` |
-| **Universal API Importer & Proxy Engine** | cURL, OpenAPI, Postman ingestion, parameter mapping, AES-256 secret vault, response cache & multi-language code generator | `requestAnalyzer.ts`, `responseCacheManager.ts`, `UniversalApiImporterModal.tsx`, `importer.routes.ts` |
-| **Response Credit Sanitizer & Universal Parameter Bridging** | Recursively strips third-party developer credits, telegram links (`@ASURPAPA`, `t.me/*`), upstream limits; auto-bridges parameter synonyms (`term`, `query`, `v_num`, `search`); injects personal Karvion branding | `responseSanitizer.ts`, `proxyEngine.ts`, `catalog.service.ts` |
+| Category | Feature / Add-On | Description | Key Modules |
+| :--- | :--- | :--- | :--- |
+| **Gateway & Response Telemetry** | **Branded Quota Exceeded & Error Injection** | Automatically enriches `DAILY_QUOTA_EXCEEDED` (and all gateway error responses) with developer branding (`developer: "arjunkahar"`), remaining quota (`req_left: 0`), assigned daily plan (`req_total`), plan expiry (`expiry: DD-MM-YYYY`), latency (`response_time`), and active announcements. | `responseSanitizer.ts`, `apps/gateway/src/index.ts`, `proxyEngine.ts`, `gateway-response.test.ts` |
+| **Announcements** | **Dual-Mode Announcement Center** | Granular targeting supporting individual direct client dispatch or global broadcast with `critical`, `warning`, `info`, and `maintenance` severities. Features real-time client acknowledgment tracking and client overview alert banners. | `announcement.service.ts`, `announcementAck.routes.ts`, `Announcements.tsx`, `Overview.tsx` |
+| **API Importer** | **Universal Automated Importer & Proxy Engine** | 1-click import from cURL (supporting `-k`/`--insecure`), OpenAPI, and Postman. Multi-tier parameter resolution across queries, paths, and JSON bodies. AES-256 secret vault and response cache engine. | `requestAnalyzer.ts`, `proxyEngine.ts`, `UniversalApiImporterModal.tsx`, `importer.routes.ts` |
+| **Sanitization & Masking** | **Upstream Quota Purging & Credit Masking** | Recursively purges third-party upstream supplier quotas (`req_left`, upstream totals) and external developer credits (`@ASURPAPA`, telegram links). Injects client's actual Karvion plan while preserving upstream diagnostics for admin eyes only. | `responseSanitizer.ts`, `proxyEngine.ts`, `catalog.service.ts` |
+| **Search Parameter Bridging** | **Universal Search Parameter Synonym Resolver** | Bridges client query parameters across common aliases (`term`, `query`, `v_num`, `search`), ensuring seamless compatibility with any upstream endpoint signature. | `proxyEngine.ts`, `requestAnalyzer.ts` |
+| **Security & WAF** | **Enterprise WAF Engine & Admin Session Protection** | Active inspection guarding against SQL Injection, XSS, Path Traversal, Command Injection (RCE), and malicious security scanners (nikto, sqlmap). Instant session invalidation on password change and MFA TOTP protection. | `wafEngine.ts`, `adminAuth.ts`, `admin-security-waf.test.ts` |
+| **Developer Profile** | **Developer Attribution & Contact Credits** | Dynamic developer attribution endpoint (`/api/v1/developer-profile`) and admin configuration interface with contact badges. | `developerProfile.service.ts`, `DeveloperProfile.tsx`, `developer-profile.test.ts` |
+| **Client Management** | **Real-Time Client Operations** | Instant hard deletion, auto-purging of orphaned records upon creation/boot, bulk actions (suspend, reactivate, key rotate), and WebSocket live updates. | `Customers.tsx`, `RealtimeContext.tsx`, `customer.service.ts` |
+| **Analytics & Telemetry** | **High-Precision Percentiles & Investigation** | P50, P95, and P99 latency percentiles, peak TPS telemetry, modal request/response payload inspector, and 1-click CSV/JSON export. | `analytics.service.ts`, `Analytics.tsx`, `Logs.tsx` |
+| **Standards & Compliance** | **RFC 8594 Sunset Headers & Tamper-Evident Audit** | Standard `Sunset` and `Deprecation` HTTP headers for phased API lifecycles, and SHA-256 cryptographically chained audit logging for admin actions. | `responseConfig.service.ts`, `audit.service.ts`, `AdminAuditLog.ts` |
 
 ---
 
-## 5. Ready to Resume Point
-When returning to this project:
-1. All changes are already committed and backed up on GitHub.
-2. The VPS can pull and apply with `bash update.sh`.
-3. The Admin dashboard is ready for login at `https://api.karviontechnologies.in/login`.
+## 5. Development & Testing Commands Reference
+
+* **Start Full Dev Environment:**
+  ```bash
+  pnpm dev
+  # or: tsx infrastructure/scripts/dev-runner.ts
+  ```
+* **Build Monorepo:**
+  ```bash
+  pnpm build
+  ```
+* **Run Entire Test Suite (118 Tests):**
+  ```bash
+  pnpm vitest run
+  ```
+* **Run Gateway Specific Tests:**
+  ```bash
+  pnpm vitest run tests/unit/gateway-response.test.ts
+  ```
+
+---
+
+## 6. Ready-to-Resume Checklist
+1. All codebase assets are committed and synchronized on GitHub (`origin/main`).
+2. Production VPS deployment is ready to trigger via `bash update.sh`.
+3. Working tree is clean and all 118 unit and integration tests are verified passing.
