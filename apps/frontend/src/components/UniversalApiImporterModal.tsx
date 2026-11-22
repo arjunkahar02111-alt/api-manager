@@ -62,7 +62,7 @@ export const UniversalApiImporterModal: React.FC<UniversalApiImporterModalProps>
     if (inputTab === 'postman') {
       return `{\n  "info": { "name": "Postman Sample" },\n  "item": [{\n    "name": "Search",\n    "request": {\n      "method": "GET",\n      "url": "https://api.example.com/search?q=test"\n    }\n  }]\n}`;
     }
-    return 'https://api.example.com/v2/items?type=car&key=SEC_XYZ';
+    return '';
   };
 
   const handleAnalyze = async (e: React.FormEvent) => {

@@ -297,7 +297,7 @@ export const AdminApis: React.FC = () => {
                 required
                 value={quickUrl}
                 onChange={(e) => setQuickUrl(e.target.value)}
-                placeholder="https://rootx-osint.in/?type=v_num&key=Axn_personal&query="
+                placeholder=""
                 className="w-full bg-[#0A0A0A] border-2 border-[#333333] focus:border-white focus:outline-none px-4 py-3 text-xs font-mono text-white placeholder-[#525252] rounded-none transition-colors"
               />
             </div>
@@ -309,7 +309,7 @@ export const AdminApis: React.FC = () => {
                 type="text"
                 value={quickName}
                 onChange={(e) => setQuickName(e.target.value)}
-                placeholder="RootX Vehicle OSINT"
+                placeholder=""
                 className="w-full bg-[#0A0A0A] border-2 border-[#333333] focus:border-white focus:outline-none px-4 py-3 text-xs text-white placeholder-[#525252] rounded-none transition-colors"
               />
             </div>
