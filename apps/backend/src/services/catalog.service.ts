@@ -1,5 +1,5 @@
 import { ApiCatalog } from '../database/models/index.js';
-import { NotFoundError, ConflictError } from '@arjun/shared';
+import { NotFoundError, ConflictError, UniversalRequestAnalyzer, encryptSecret } from '@arjun/shared';
 import { logAdminAction } from './audit.service.js';
 import { getRedisClient } from './redis.service.js';
 import { request } from 'undici';
@@ -213,6 +213,22 @@ export class CatalogService {
       gatewayPath = `/${slug}`;
     }
 
+    const analyzed = UniversalRequestAnalyzer.analyze(targetUrl.trim());
+    let authConfig = analyzed.authConfig;
+    if (analyzed.parameterMappings) {
+      const secretMapping = analyzed.parameterMappings.find(
+        (m: any) => m.isProviderCredential && m.staticValue
+      );
+      if (secretMapping && secretMapping.staticValue) {
+        authConfig = {
+          type: 'api_key_query',
+          paramName: secretMapping.providerName,
+          encryptedCredential: encryptSecret(String(secretMapping.staticValue)),
+          credentialPrefix: '••••••••',
+        };
+      }
+    }
+
     const api = await ApiCatalog.create({
       name,
       slug,
@@ -227,6 +243,11 @@ export class CatalogService {
       status: 'active',
       authenticationRequired: true,
       allowedPlans: ['*'],
+      authConfig,
+      parameterDefinitions: analyzed.parameterDefinitions,
+      parameterMappings: analyzed.parameterMappings,
+      cachePolicy: { enabled: true, ttlSeconds: 60, cacheMethods: ['GET'], respectUpstreamCacheControl: true },
+      responseEnvelope: 'wrap',
     });
 
     const redis = getRedisClient();

@@ -17,6 +17,7 @@ import {
   UniversalRequestAnalyzer,
   ClientPackageGenerator,
   ResponseCacheManager,
+  ResponseSanitizer,
   encryptSecret,
   decryptSecret,
   parseCurlCommand,
@@ -360,5 +361,90 @@ describe('Universal Automated API Importer, Request Mapper & Response Cache Engi
     expect(listRes.status).toBe(200);
     expect(listRes.body.success).toBe(true);
     expect(Array.isArray(listRes.body.data)).toBe(true);
+  });
+
+  // 21. ResponseSanitizer foreign credit & telegram watermark removal
+  it('21. should completely strip third-party developer credits, telegram links, and upstream limits', () => {
+    const upstreamPayload = {
+      status: false,
+      message: 'Please provide term parameter',
+      credit: {
+        name: 'ASUR',
+        developer: '@ASURPAPA',
+        contact: 'https://t.me/ASUR_ABOUT',
+        footer: 'Powered by ASUR',
+      },
+      quota_left: 42,
+    };
+
+    const sanitized = ResponseSanitizer.cleanAndRebrand(
+      upstreamPayload,
+      {
+        developerTag: 'arjunkahar',
+        reqLeft: 4999,
+        reqTotal: 5000,
+        expiresAt: new Date('2026-12-31T23:59:59Z'),
+      },
+      85
+    );
+
+    // Verify foreign credits are completely removed
+    expect(sanitized.credit).toBeUndefined();
+    expect(sanitized.quota_left).toBeUndefined();
+    expect(JSON.stringify(sanitized)).not.toContain('ASUR');
+    expect(JSON.stringify(sanitized)).not.toContain('@ASURPAPA');
+    expect(JSON.stringify(sanitized)).not.toContain('t.me');
+
+    // Verify original error message and status are preserved
+    expect(sanitized.status).toBe(false);
+    expect(sanitized.message).toBe('Please provide term parameter');
+
+    // Verify personal Karvion branding is injected
+    expect(sanitized.developer).toBe('arjunkahar');
+    expect(sanitized.req_left).toBe(4999);
+    expect(sanitized.req_total).toBe(5000);
+    expect(sanitized.expiry).toBe('31-12-2026');
+    expect(sanitized.response_time).toBe('85ms');
+  });
+
+  // 22. Preserve falsy values and nested structures
+  it('22. should preserve valid falsy values (0, false, null, empty string, empty array) during sanitization', () => {
+    const complexPayload = {
+      status: false,
+      count: 0,
+      description: '',
+      tags: [],
+      owner: null,
+      nested: {
+        active: false,
+        limit: 0,
+        channel: 'https://t.me/leak',
+      },
+    };
+
+    const sanitized = ResponseSanitizer.cleanAndRebrand(complexPayload, {
+      developerTag: 'arjunkahar',
+    });
+
+    expect(sanitized.status).toBe(false);
+    expect(sanitized.count).toBe(0);
+    expect(sanitized.description).toBe('');
+    expect(sanitized.tags).toEqual([]);
+    expect(sanitized.owner).toBeNull();
+    expect(sanitized.nested.active).toBe(false);
+    expect(sanitized.nested.limit).toBe(0);
+    expect(sanitized.nested.channel).toBeUndefined();
+    expect(sanitized.developer).toBe('arjunkahar');
+  });
+
+  // 23. Parameter synonym detection and mapping
+  it('23. should detect parameter synonyms and correctly identify query parameters for different API formats', () => {
+    const curl = 'curl "https://api.external.com/v1/search?term=PB10HS2829&api_key=SECRET123"';
+    const analyzed = UniversalRequestAnalyzer.analyze(curl);
+
+    expect(analyzed.parameterDefinitions.find((p) => p.name === 'term')).toBeDefined();
+    expect(analyzed.parameterMappings.find((m) => m.clientName === 'term')).toBeDefined();
+    expect(analyzed.authConfig.type).toBe('api_key_query');
+    expect(analyzed.authConfig.paramName).toBe('api_key');
   });
 });

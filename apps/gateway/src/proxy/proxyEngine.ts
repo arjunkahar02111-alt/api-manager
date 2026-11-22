@@ -4,7 +4,7 @@ import zlib from 'node:zlib';
 import { decompress as decompressZstd } from 'fzstd';
 import { RouteConfig } from '../routing/routeResolver.js';
 import { validateUpstreamUrl } from '../security/ssrfGuard.js';
-import { UpstreamError, decryptSecret } from '@arjun/shared';
+import { UpstreamError, decryptSecret, ResponseSanitizer } from '@arjun/shared';
 import { ResponseCacheManager } from '../cache/responseCacheManager.js';
 import type { Redis } from 'ioredis';
 
@@ -41,6 +41,22 @@ const STRIPPED_RESPONSE_HEADERS = new Set([
   'report-to',
   'strict-transport-security',
 ]);
+
+// Search and query parameter synonyms for automatic bridging across diverse API formats
+const SEARCH_SYNONYMS = [
+  'term',
+  'query',
+  'q',
+  'search',
+  'v_num',
+  'vehicle_number',
+  'vehicle',
+  'rc',
+  'number',
+  'input',
+  'keyword',
+  'text',
+];
 
 // Decompress upstream binary response (zstd, brotli, gzip, deflate) into a clean Buffer
 function decompressBuffer(buffer: Buffer, encodingHeader?: string | string[]): Buffer {
@@ -322,12 +338,31 @@ export class ProxyEngine {
       if (mapping.clientIn === 'query') {
         if (incomingClientParams.has(mapping.clientName)) {
           clientValue = incomingClientParams.get(mapping.clientName);
+        } else {
+          // Check search synonyms for resilient parameter mapping
+          const lowerName = mapping.clientName.toLowerCase();
+          const isSearchSynonym = SEARCH_SYNONYMS.includes(lowerName);
+          if (isSearchSynonym) {
+            for (const syn of SEARCH_SYNONYMS) {
+              if (incomingClientParams.has(syn)) {
+                clientValue = incomingClientParams.get(syn);
+                break;
+              }
+            }
+          }
         }
       } else if (mapping.clientIn === 'header') {
         clientValue = req.headers[mapping.clientName.toLowerCase()];
       } else if (mapping.clientIn === 'body') {
         if (isJsonRequestBody && parsedJsonBody[mapping.clientName] !== undefined) {
           clientValue = parsedJsonBody[mapping.clientName];
+        } else if (isJsonRequestBody && SEARCH_SYNONYMS.includes(mapping.clientName.toLowerCase())) {
+          for (const syn of SEARCH_SYNONYMS) {
+            if (parsedJsonBody[syn] !== undefined) {
+              clientValue = parsedJsonBody[syn];
+              break;
+            }
+          }
         }
       }
 
@@ -404,16 +439,56 @@ export class ProxyEngine {
       }
     }
 
-    // Auto-map vehicle search parameters for resilient backward compatibility
-    if (!urlObj.searchParams.has('query')) {
-      const altParam =
-        urlObj.searchParams.get('vehicle_number') ||
-        urlObj.searchParams.get('v_num') ||
-        urlObj.searchParams.get('vehicle') ||
-        urlObj.searchParams.get('rc') ||
-        urlObj.searchParams.get('number');
-      if (altParam) {
-        urlObj.searchParams.set('query', altParam);
+    // Universal Search & Query Parameter Synonym Bridging
+    // E.g. Client passes query=..., v_num=..., rc=..., search=..., but upstream expects term=..., q=..., etc.
+    const detectedSearchVal = SEARCH_SYNONYMS.map(
+      (k) => urlObj.searchParams.get(k) || (incomingClientParams.get(k) || undefined)
+    ).find((v) => typeof v === 'string' && v.trim().length > 0);
+
+    if (detectedSearchVal) {
+      const upstreamText = `${route.upstreamBaseUrl || ''} ${route.upstreamPath || ''} ${(route.parameterMappings || []).map((m: any) => m.providerName).join(' ')}`.toLowerCase();
+
+      // If upstream specifically contains 'term' (like ?term= or path with term)
+      if (upstreamText.includes('term') && !urlObj.searchParams.has('term')) {
+        urlObj.searchParams.set('term', detectedSearchVal);
+      }
+      // If upstream specifically contains 'query'
+      if (upstreamText.includes('query') && !urlObj.searchParams.has('query')) {
+        urlObj.searchParams.set('query', detectedSearchVal);
+      }
+      // If upstream specifically contains 'q'
+      if (upstreamText.includes('q=') && !urlObj.searchParams.has('q')) {
+        urlObj.searchParams.set('q', detectedSearchVal);
+      }
+      // If upstream specifically contains 'search'
+      if (upstreamText.includes('search') && !urlObj.searchParams.has('search')) {
+        urlObj.searchParams.set('search', detectedSearchVal);
+      }
+
+      // Universal bidirectional fallback:
+      // Ensure the standard parameters 'query' and 'term' are both populated if not already set,
+      // so whatever the external API reads (query, term, v_num), it receives the value!
+      if (!urlObj.searchParams.has('query')) {
+        urlObj.searchParams.set('query', detectedSearchVal);
+      }
+      if (!urlObj.searchParams.has('term')) {
+        urlObj.searchParams.set('term', detectedSearchVal);
+      }
+    }
+
+    if (isJsonRequestBody && parsedJsonBody && typeof parsedJsonBody === 'object' && !Array.isArray(parsedJsonBody)) {
+      const bodySearchVal = SEARCH_SYNONYMS.map((k) => parsedJsonBody[k]).find(
+        (v) => typeof v === 'string' && v.trim().length > 0
+      );
+      if (bodySearchVal) {
+        if (!parsedJsonBody.query && !parsedJsonBody.term) {
+          parsedJsonBody.query = bodySearchVal;
+          parsedJsonBody.term = bodySearchVal;
+        } else if (!parsedJsonBody.query) {
+          parsedJsonBody.query = bodySearchVal;
+        } else if (!parsedJsonBody.term) {
+          parsedJsonBody.term = bodySearchVal;
+        }
       }
     }
 
@@ -529,24 +604,16 @@ export class ProxyEngine {
 
       let finalBody: Buffer | string = decompressedBuffer;
 
-      // Response Envelope Handling:
-      // If 'preserve' (default for imported APIs): do NOT mutate the JSON body; original upstream keys are 100% untouched.
-      // If 'wrap': inject metadata directly into the JSON body (used for legacy endpoints).
-      const shouldWrapEnvelope = route.responseEnvelope === 'wrap';
-
-      if (isJson && shouldWrapEnvelope) {
+      // Response Sanitization & White-Label Rebranding Handling:
+      // Recursively strips foreign third-party credits (e.g. ASUR, telegram links, upstream limits)
+      // and injects the personal developer branding and customer metadata.
+      if (isJson) {
         try {
           const text = decompressedBuffer.toString('utf-8');
           const json = JSON.parse(text);
-          if (json && typeof json === 'object' && !Array.isArray(json)) {
-            json.developer = clientMeta?.developerTag || 'arjunkahar';
-            if (clientMeta?.announcement) json.announcement = clientMeta.announcement;
-            if (clientMeta?.reqLeft !== undefined) json.req_left = clientMeta.reqLeft;
-            if (clientMeta?.reqTotal !== undefined) json.req_total = clientMeta.reqTotal;
-            if (clientMeta?.expiresAt) json.expiry = formatExpiryDate(clientMeta.expiresAt);
-            json.response_time = `${duration}ms`;
-            json.response_time_seconds = Number((duration / 1000).toFixed(2));
-            finalBody = JSON.stringify(json, null, 2);
+          if (json && typeof json === 'object') {
+            const cleaned = ResponseSanitizer.cleanAndRebrand(json, clientMeta, duration);
+            finalBody = JSON.stringify(cleaned, null, 2);
             res.setHeader('content-type', 'application/json; charset=utf-8');
           }
         } catch {
