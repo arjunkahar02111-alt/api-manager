@@ -265,11 +265,59 @@ export class ProxyEngine {
     forwardedHeaders['x-forwarded-proto'] = req.protocol;
     forwardedHeaders['x-gateway-id'] = 'arjun-api-manager';
 
-    // Parse incoming client query parameters
+    // Parse incoming client query parameters from originalUrl and Express req.query
     const incomingQueryIdx = req.originalUrl.indexOf('?');
     const incomingClientParams = new URLSearchParams(
       incomingQueryIdx !== -1 ? req.originalUrl.substring(incomingQueryIdx) : ''
     );
+    if (req.query && typeof req.query === 'object') {
+      for (const [k, v] of Object.entries(req.query)) {
+        if (typeof v === 'string' && !incomingClientParams.has(k)) {
+          incomingClientParams.set(k, v);
+        }
+      }
+    }
+
+    // Comprehensive client search parameter extraction across synonyms, arbitrary query keys, and subPath
+    let clientSearchVal: string | undefined = undefined;
+
+    // 1. Check known search synonyms in client request
+    for (const syn of SEARCH_SYNONYMS) {
+      const val = incomingClientParams.get(syn);
+      if (typeof val === 'string' && val.trim().length > 0) {
+        clientSearchVal = val.trim();
+        break;
+      }
+    }
+
+    // 2. Check if client passed any single non-auth query parameter (e.g. ?car=... or ?license=...)
+    if (!clientSearchVal) {
+      for (const [k, v] of incomingClientParams.entries()) {
+        const lk = k.toLowerCase();
+        if (
+          lk !== 'api_key' &&
+          lk !== 'apikey' &&
+          lk !== 'key' &&
+          lk !== 'token' &&
+          lk !== 'secret' &&
+          lk !== 'auth' &&
+          lk !== 'authorization'
+        ) {
+          if (typeof v === 'string' && v.trim().length > 0) {
+            clientSearchVal = v.trim();
+            break;
+          }
+        }
+      }
+    }
+
+    // 3. Check if search parameter was passed via path segment (e.g. /v1/vehicle/PB10HS2829)
+    if (!clientSearchVal && subPath && subPath.trim().length > 1) {
+      const pathSegment = subPath.replace(/^\/+/, '').split('/')[0];
+      if (pathSegment && pathSegment.trim().length > 0) {
+        clientSearchVal = pathSegment.trim();
+      }
+    }
 
     // Parse incoming request body if JSON
     let parsedJsonBody: any = undefined;
@@ -417,8 +465,8 @@ export class ProxyEngine {
         continue;
       }
 
-      // If already explicitly mapped, do not duplicate unless permitted
-      if (!mappedClientQueryKeys.has(key) && !urlObj.searchParams.has(key)) {
+      // Client-provided parameters always override template/placeholder values
+      if (!mappedClientQueryKeys.has(key)) {
         urlObj.searchParams.set(key, value);
       }
     }
@@ -439,55 +487,34 @@ export class ProxyEngine {
       }
     }
 
-    // Universal Search & Query Parameter Synonym Bridging
-    // E.g. Client passes query=..., v_num=..., rc=..., search=..., but upstream expects term=..., q=..., etc.
-    const detectedSearchVal = SEARCH_SYNONYMS.map(
-      (k) => urlObj.searchParams.get(k) || (incomingClientParams.get(k) || undefined)
-    ).find((v) => typeof v === 'string' && v.trim().length > 0);
+    // 6. Universal Search & Query Parameter Synonym Bridging
+    // Automatically populate and bridge parameters across formats (term, query, q, search, v_num, etc.)
+    if (clientSearchVal) {
+      const upstreamText = `${route.upstreamBaseUrl || ''} ${route.upstreamPath || ''} ${(route.parameterMappings || []).map((m: any) => `${m.providerName} ${m.clientName}`).join(' ')}`.toLowerCase();
 
-    if (detectedSearchVal) {
-      const upstreamText = `${route.upstreamBaseUrl || ''} ${route.upstreamPath || ''} ${(route.parameterMappings || []).map((m: any) => m.providerName).join(' ')}`.toLowerCase();
-
-      // If upstream specifically contains 'term' (like ?term= or path with term)
-      if (upstreamText.includes('term') && !urlObj.searchParams.has('term')) {
-        urlObj.searchParams.set('term', detectedSearchVal);
-      }
-      // If upstream specifically contains 'query'
-      if (upstreamText.includes('query') && !urlObj.searchParams.has('query')) {
-        urlObj.searchParams.set('query', detectedSearchVal);
-      }
-      // If upstream specifically contains 'q'
-      if (upstreamText.includes('q=') && !urlObj.searchParams.has('q')) {
-        urlObj.searchParams.set('q', detectedSearchVal);
-      }
-      // If upstream specifically contains 'search'
-      if (upstreamText.includes('search') && !urlObj.searchParams.has('search')) {
-        urlObj.searchParams.set('search', detectedSearchVal);
+      // Set any synonym mentioned in the upstream configuration
+      for (const syn of SEARCH_SYNONYMS) {
+        if (upstreamText.includes(syn)) {
+          urlObj.searchParams.set(syn, clientSearchVal);
+        }
       }
 
-      // Universal bidirectional fallback:
-      // Ensure the standard parameters 'query' and 'term' are both populated if not already set,
-      // so whatever the external API reads (query, term, v_num), it receives the value!
-      if (!urlObj.searchParams.has('query')) {
-        urlObj.searchParams.set('query', detectedSearchVal);
-      }
-      if (!urlObj.searchParams.has('term')) {
-        urlObj.searchParams.set('term', detectedSearchVal);
-      }
+      // Universal bidirectional safeguard:
+      // Always populate BOTH 'term' AND 'query' with clientSearchVal so neither can ever be missing or empty!
+      urlObj.searchParams.set('term', clientSearchVal);
+      urlObj.searchParams.set('query', clientSearchVal);
     }
 
     if (isJsonRequestBody && parsedJsonBody && typeof parsedJsonBody === 'object' && !Array.isArray(parsedJsonBody)) {
-      const bodySearchVal = SEARCH_SYNONYMS.map((k) => parsedJsonBody[k]).find(
-        (v) => typeof v === 'string' && v.trim().length > 0
-      );
-      if (bodySearchVal) {
-        if (!parsedJsonBody.query && !parsedJsonBody.term) {
-          parsedJsonBody.query = bodySearchVal;
-          parsedJsonBody.term = bodySearchVal;
-        } else if (!parsedJsonBody.query) {
-          parsedJsonBody.query = bodySearchVal;
-        } else if (!parsedJsonBody.term) {
-          parsedJsonBody.term = bodySearchVal;
+      if (clientSearchVal) {
+        parsedJsonBody.term = clientSearchVal;
+        parsedJsonBody.query = clientSearchVal;
+        const upstreamText = `${route.upstreamBaseUrl || ''} ${route.upstreamPath || ''} ${(route.parameterMappings || []).map((m: any) => `${m.providerName} ${m.clientName}`).join(' ')}`.toLowerCase();
+        if (parsedJsonBody.search !== undefined || upstreamText.includes('search')) {
+          parsedJsonBody.search = clientSearchVal;
+        }
+        if (parsedJsonBody.v_num !== undefined || upstreamText.includes('v_num')) {
+          parsedJsonBody.v_num = clientSearchVal;
         }
       }
     }

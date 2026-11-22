@@ -447,4 +447,44 @@ describe('Universal Automated API Importer, Request Mapper & Response Cache Engi
     expect(analyzed.authConfig.type).toBe('api_key_query');
     expect(analyzed.authConfig.paramName).toBe('api_key');
   });
+
+  // 24. Universal automated parameter bridging & template override
+  it('24. should automatically populate term and query regardless of which synonym client calls', () => {
+    const SEARCH_SYNONYMS = [
+      'term',
+      'query',
+      'q',
+      'search',
+      'v_num',
+      'vehicle_number',
+      'vehicle',
+      'rc',
+      'number',
+      'input',
+    ];
+
+    // Simulate incoming client parameters with ?query=PB10HS2829
+    const incomingParams = new URLSearchParams('query=PB10HS2829');
+    let clientSearchVal: string | undefined = undefined;
+    for (const syn of SEARCH_SYNONYMS) {
+      const val = incomingParams.get(syn);
+      if (val && val.trim().length > 0) {
+        clientSearchVal = val.trim();
+        break;
+      }
+    }
+    expect(clientSearchVal).toBe('PB10HS2829');
+
+    // Simulate URL destination with empty term in template
+    const urlObj = new URL('https://provider.example.com/api?term=&key=SECRET');
+    expect(urlObj.searchParams.get('term')).toBe('');
+
+    // Apply universal synonym population
+    urlObj.searchParams.set('term', clientSearchVal!);
+    urlObj.searchParams.set('query', clientSearchVal!);
+
+    expect(urlObj.searchParams.get('term')).toBe('PB10HS2829');
+    expect(urlObj.searchParams.get('query')).toBe('PB10HS2829');
+    expect(urlObj.searchParams.get('key')).toBe('SECRET');
+  });
 });

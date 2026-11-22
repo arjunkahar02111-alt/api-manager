@@ -191,7 +191,7 @@ export class CatalogService {
     }
 
     const upstreamBaseUrl = urlObj.origin;
-    const upstreamPath = `${urlObj.pathname}${urlObj.search}`;
+    const upstreamPath = urlObj.pathname;
 
     const hostParts = urlObj.hostname.replace(/^www\./, '').split('.');
     const baseDomain = hostParts[0] || 'service';
