@@ -63,12 +63,27 @@ export class AnnouncementService {
     adminUsername: string,
     sourceIp: string
   ): Promise<AnnouncementDocument> {
-    const count = await Announcement.countDocuments();
-    const announcementId = `ANN-${1000 + count + 1}`;
+    let announcementId = data.announcementId;
+    if (!announcementId) {
+      const allAnnouncements = await Announcement.find({ announcementId: /^ANN-\d+$/ }, { announcementId: 1 }).lean();
+      let maxNum = 1000;
+      for (const ann of allAnnouncements) {
+        const match = ann.announcementId.match(/^ANN-(\d+)$/);
+        if (match && match[1]) {
+          const num = parseInt(match[1], 10);
+          if (num > maxNum) maxNum = num;
+        }
+      }
+      announcementId = `ANN-${maxNum + 1}`;
+      while (await Announcement.findOne({ announcementId })) {
+        maxNum++;
+        announcementId = `ANN-${maxNum + 1}`;
+      }
+    }
 
     const announcement = await Announcement.create({
       ...data,
-      announcementId: data.announcementId || announcementId,
+      announcementId,
       status: data.status || 'draft',
       createdBy: adminUsername,
     });
@@ -305,14 +320,18 @@ export class AnnouncementService {
     adminUsername: string,
     sourceIp: string
   ) {
+    const cleanTitle = title.startsWith('🚨') ? title : `🚨 EMERGENCY: ${title}`;
     const announcement = await this.createAnnouncement(
       {
-        title: `🚨 EMERGENCY: ${title}`,
+        title: cleanTitle,
         message,
         type: 'emergency',
-        priority: 'critical',
+        severity: 'critical',
+        priority: 100,
         targetScope: 'global',
-        requireAck: true,
+        acknowledgmentRequired: true,
+        status: 'published',
+        startDate: new Date(),
       },
       adminId,
       adminUsername,

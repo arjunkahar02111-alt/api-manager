@@ -14,6 +14,7 @@ export interface IAnnouncement {
   message: string;
   type:
     | 'general'
+    | 'emergency'
     | 'maintenance'
     | 'warning'
     | 'update'
@@ -72,6 +73,7 @@ const AnnouncementSchema = new Schema<AnnouncementDocument>(
       type: String,
       enum: [
         'general',
+        'emergency',
         'maintenance',
         'warning',
         'update',

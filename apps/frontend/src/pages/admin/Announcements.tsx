@@ -91,9 +91,11 @@ export const AdminAnnouncements: React.FC = () => {
         setModalOpen(false);
         resetForm();
         fetchAnnouncements();
+      } else {
+        alert(res.error?.message || 'Failed to create announcement');
       }
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      alert(e.message || 'Error creating announcement');
     } finally {
       setSubmitting(false);
     }
@@ -182,6 +184,8 @@ export const AdminAnnouncements: React.FC = () => {
     if (res.success) {
       alert('Emergency announcement published live across all API gateway routes.');
       fetchAnnouncements();
+    } else {
+      alert(res.error?.message || 'Failed to broadcast emergency announcement.');
     }
   };
 
@@ -430,6 +434,7 @@ export const AdminAnnouncements: React.FC = () => {
                     className="w-full bg-[#050508] border border-[#2A1A4A] p-2 text-white focus:outline-none"
                   >
                     <option value="general">General</option>
+                    <option value="emergency">Emergency</option>
                     <option value="maintenance">Maintenance</option>
                     <option value="warning">Warning</option>
                     <option value="update">Update</option>

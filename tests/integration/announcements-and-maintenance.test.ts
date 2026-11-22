@@ -170,4 +170,23 @@ describe('Admin Dynamic Announcement & Maintenance Engine Suite', () => {
     expect(res.status).toBe(401);
     expect(res.body.success).toBe(false);
   });
+
+  it('6. should broadcast an emergency announcement immediately via /emergency endpoint without error', async () => {
+    const res = await request(app)
+      .post('/api/v1/admin/announcements/emergency')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        title: 'Platform Critical Incident',
+        message: 'All endpoints temporarily operating in fallback mode.',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.type).toBe('emergency');
+    expect(res.body.data.severity).toBe('critical');
+    expect(res.body.data.priority).toBe(100);
+    expect(res.body.data.status).toBe('published');
+    expect(res.body.data.acknowledgmentRequired).toBe(true);
+    expect(res.body.data.title).toContain('🚨 EMERGENCY: Platform Critical Incident');
+  });
 });
