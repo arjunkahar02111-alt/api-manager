@@ -340,4 +340,42 @@ export const PublishImportedApiSchema = z.object({
   allowedPlans: z.array(z.string()).default(['*']),
 });
 
+export const UpdateDeveloperProfileSchema = z.object({
+  name: z.string().min(1).max(100),
+  role: z.string().min(1).max(100),
+  product: z.string().min(1).max(100),
+  description: z.string().min(1).max(1000),
+  email: z.string().email(),
+  telegram: z.string().min(1).max(100),
+  telegramUrl: z.string().url(),
+  instagram: z.string().min(1).max(100),
+  instagramUrl: z.string().url(),
+  twitter: z.string().min(1).max(100),
+  twitterUrl: z.string().url(),
+  portfolioUrl: z.string().url(),
+  youtubeName: z.string().min(1).max(100),
+  youtubeUrl: z.string().url(),
+  avatarUrl: z.string().optional().default(''),
+  footerCreditText: z.string().min(1).max(200),
+  enabled: z.boolean().default(true),
+  socialLinks: z
+    .object({
+      email: z.boolean().default(true),
+      telegram: z.boolean().default(true),
+      instagram: z.boolean().default(true),
+      twitter: z.boolean().default(true),
+      portfolio: z.boolean().default(true),
+      youtube: z.boolean().default(true),
+    })
+    .default({
+      email: true,
+      telegram: true,
+      instagram: true,
+      twitter: true,
+      portfolio: true,
+      youtube: true,
+    }),
+});
+
+
 

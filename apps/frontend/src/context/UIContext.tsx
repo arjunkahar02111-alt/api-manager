@@ -31,6 +31,11 @@ interface UIContextType {
 
   // Network Connectivity
   isOnline: boolean;
+
+  // Developer Profile Modal
+  developerModalOpen: boolean;
+  openDeveloperModal: () => void;
+  closeDeveloperModal: () => void;
 }
 
 const UIContext = createContext<UIContextType | undefined>(undefined);
@@ -68,6 +73,7 @@ const INITIAL_NOTIFICATIONS: NotificationItem[] = [
 export const UIProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [developerModalOpen, setDeveloperModalOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
@@ -108,6 +114,8 @@ export const UIProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   const toggleMobileMenu = () => setMobileMenuOpen((prev) => !prev);
   const closeMobileMenu = () => setMobileMenuOpen(false);
   const toggleCommandPalette = () => setCommandPaletteOpen((prev) => !prev);
+  const openDeveloperModal = () => setDeveloperModalOpen(true);
+  const closeDeveloperModal = () => setDeveloperModalOpen(false);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -139,6 +147,9 @@ export const UIProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         commandPaletteOpen,
         setCommandPaletteOpen,
         toggleCommandPalette,
+        developerModalOpen,
+        openDeveloperModal,
+        closeDeveloperModal,
         notifications,
         unreadCount,
         markAllNotificationsAsRead,

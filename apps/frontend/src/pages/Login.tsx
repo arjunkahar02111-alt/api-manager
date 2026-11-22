@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiRequest } from '../services/api';
 import { LoginBrand } from '../components/branding';
+import { DeveloperProfileModal } from '../components/DeveloperProfileModal';
 import {
   AlertCircle,
   Loader2,
@@ -24,6 +25,7 @@ export const Login: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showDevModal, setShowDevModal] = useState(false);
 
   const { adminLogin } = useAuth();
   const navigate = useNavigate();
@@ -198,11 +200,26 @@ export const Login: React.FC = () => {
           </div>
         </div>
 
-        {/* Security Notice */}
-        <p className="text-[11px] text-center text-[#A39BAD]/60">
-          Karvion Technologies &bull; Enterprise API Platform &bull; Domain: api.karviontechnologies.in
-        </p>
+        {/* Security Notice & Developer Credit */}
+        <div className="text-center space-y-2">
+          <p className="text-[11px] text-[#A39BAD]/60">
+            Karvion Technologies &bull; Enterprise API Platform &bull; Domain: api.karviontechnologies.in
+          </p>
+          <div className="flex items-center justify-center gap-1.5 text-xs text-[#A39BAD]/80">
+            <span>Developed &amp; Maintained by</span>
+            <button
+              type="button"
+              onClick={() => setShowDevModal(true)}
+              className="text-[#C77DFF] font-bold hover:underline hover:text-white transition-colors cursor-pointer"
+              title="Click to view Developer Profile & Contact Details"
+            >
+              DEV ARJUN
+            </button>
+          </div>
+        </div>
       </div>
+
+      <DeveloperProfileModal isOpen={showDevModal} onClose={() => setShowDevModal(false)} />
     </div>
   );
 };

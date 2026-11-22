@@ -614,3 +614,36 @@ export interface RiskAssessmentResult {
   factors: string[];
 }
 
+export interface IDeveloperProfile {
+  _id?: string;
+  name: string;
+  role: string;
+  product: string;
+  description: string;
+  email: string;
+  telegram: string;
+  telegramUrl: string;
+  instagram: string;
+  instagramUrl: string;
+  twitter: string;
+  twitterUrl: string;
+  portfolioUrl: string;
+  youtubeName: string;
+  youtubeUrl: string;
+  avatarUrl?: string;
+  footerCreditText: string;
+  enabled: boolean;
+  socialLinks: {
+    email: boolean;
+    telegram: boolean;
+    instagram: boolean;
+    twitter: boolean;
+    portfolio: boolean;
+    youtube: boolean;
+  };
+  updatedBy?: string;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+}
+
+

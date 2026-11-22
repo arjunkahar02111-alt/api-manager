@@ -30,6 +30,8 @@ import adminAnnouncementRoutes from './modules/admin/announcement.routes.js';
 import adminAlertRoutes from './modules/admin/alert.routes.js';
 import adminIncidentRoutes from './modules/admin/incident.routes.js';
 import adminResponseConfigRoutes from './modules/admin/responseConfig.routes.js';
+import adminDeveloperProfileRoutes from './modules/admin/developerProfile.routes.js';
+import publicDeveloperProfileRoutes from './modules/public/developerProfile.routes.js';
 import announcementAckRoutes from './modules/customer/announcementAck.routes.js';
 
 // Customer route imports
@@ -141,6 +143,8 @@ app.use('/api/v1/admin/announcements', adminAnnouncementRoutes);
 app.use('/api/v1/admin/alerts', adminAlertRoutes);
 app.use('/api/v1/admin/incidents', adminIncidentRoutes);
 app.use('/api/v1/admin/response-config', adminResponseConfigRoutes);
+app.use('/api/v1/admin/developer-profile', adminDeveloperProfileRoutes);
+app.use('/api/v1/developer-profile', publicDeveloperProfileRoutes);
 app.use('/api/v1/announcements', announcementAckRoutes);
 
 // Customer API Routes

@@ -27,3 +27,5 @@ export * from './Incident.js';
 export * from './Alert.js';
 export * from './ResponseConfig.js';
 export * from './AutomationAuditLog.js';
+export * from './DeveloperProfile.js';
+

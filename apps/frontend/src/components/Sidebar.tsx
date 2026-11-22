@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
-  const { mobileMenuOpen, closeMobileMenu } = useUI();
+  const { mobileMenuOpen, closeMobileMenu, openDeveloperModal } = useUI();
   const location = useLocation();
 
   // Automatically close mobile drawer when route changes
@@ -100,12 +100,23 @@ export const Sidebar: React.FC = () => {
       </nav>
 
       {/* Footer Info */}
-      <div className="p-3 bg-[#08060D] border-t-2 border-[#1F1930] text-[10px] text-[#6D657A] flex items-center justify-between shrink-0">
-        <span>KARVION // V2.0</span>
-        <span className="flex items-center gap-1.5 text-[#10B981]">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" />
-          ONLINE
-        </span>
+      <div className="p-3 bg-[#08060D] border-t-2 border-[#1F1930] text-[10px] text-[#6D657A] flex flex-col gap-2 shrink-0">
+        <div className="flex items-center justify-between">
+          <span>KARVION // V2.0</span>
+          <span className="flex items-center gap-1.5 text-[#10B981]">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" />
+            ONLINE
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={openDeveloperModal}
+          className="text-left text-[10px] text-[#A39BAD] hover:text-[#C77DFF] transition-colors truncate font-mono cursor-pointer flex items-center justify-between pt-1.5 border-t border-[#1F1930]"
+          title="Click to view Developer Profile & Contact Details"
+        >
+          <span>Developed by</span>
+          <span className="text-white font-bold underline decoration-[#A020F0]/50 hover:decoration-[#A020F0]">DEV ARJUN</span>
+        </button>
       </div>
     </div>
   );
