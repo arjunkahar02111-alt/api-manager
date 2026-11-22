@@ -9,6 +9,22 @@ import type {
   ParameterDataType,
 } from '@arjun/types';
 
+// Standard query and search parameter synonyms
+const SEARCH_SYNONYMS = [
+  'term',
+  'query',
+  'q',
+  'search',
+  'v_num',
+  'vehicle_number',
+  'vehicle',
+  'rc',
+  'number',
+  'input',
+  'keyword',
+  'text',
+];
+
 export interface AnalyzedApiResult {
   name: string;
   slug: string;
@@ -159,12 +175,16 @@ export class UniversalRequestAnalyzer {
         });
       } else {
         const dataType = detectDataType(val);
+        const lowerKey = key.toLowerCase();
+        const isSearchParam = SEARCH_SYNONYMS.includes(lowerKey);
+        const hasSampleValue = val !== undefined && val !== null && String(val).trim().length > 0;
+
         parameterDefinitions.push({
           name: key,
           in: 'query',
           type: dataType,
-          required: true,
-          defaultValue: undefined,
+          required: isSearchParam,
+          defaultValue: isSearchParam ? undefined : (hasSampleValue ? String(val) : undefined),
           sampleValue: val,
           description: `Query parameter: ${key}`,
         });
@@ -175,8 +195,9 @@ export class UniversalRequestAnalyzer {
           providerName: key,
           providerIn: 'query',
           isStatic: false,
-          required: true,
-          defaultValue: undefined,
+          required: isSearchParam,
+          defaultValue: isSearchParam ? undefined : (hasSampleValue ? String(val) : undefined),
+          staticValue: hasSampleValue ? String(val) : undefined,
         });
       }
     }
@@ -219,11 +240,15 @@ export class UniversalRequestAnalyzer {
           if (typeof sampleBody === 'object' && sampleBody !== null && !Array.isArray(sampleBody)) {
             for (const [bKey, bVal] of Object.entries(sampleBody)) {
               const bType = detectDataType(bVal);
+              const isSearch = SEARCH_SYNONYMS.includes(bKey.toLowerCase());
+              const hasVal = bVal !== undefined && bVal !== null && String(bVal).trim().length > 0;
+
               parameterDefinitions.push({
                 name: bKey,
                 in: 'body',
                 type: bType,
-                required: true,
+                required: isSearch,
+                defaultValue: isSearch ? undefined : (hasVal ? bVal : undefined),
                 sampleValue: bVal,
                 description: `Request body property: ${bKey}`,
               });
@@ -234,7 +259,9 @@ export class UniversalRequestAnalyzer {
                 providerName: bKey,
                 providerIn: 'body',
                 isStatic: false,
-                required: true,
+                required: isSearch,
+                defaultValue: isSearch ? undefined : (hasVal ? bVal : undefined),
+                staticValue: hasVal ? (typeof bVal === 'object' ? JSON.stringify(bVal) : String(bVal)) : undefined,
               });
             }
           }
@@ -246,11 +273,15 @@ export class UniversalRequestAnalyzer {
         const formObj: Record<string, string> = {};
         usp.forEach((val, key) => {
           formObj[key] = val;
+          const isSearch = SEARCH_SYNONYMS.includes(key.toLowerCase());
+          const hasVal = val !== undefined && val !== null && String(val).trim().length > 0;
+
           parameterDefinitions.push({
             name: key,
             in: 'body',
             type: 'string',
-            required: true,
+            required: isSearch,
+            defaultValue: isSearch ? undefined : (hasVal ? val : undefined),
             sampleValue: val,
             description: `Form parameter: ${key}`,
           });
@@ -261,7 +292,9 @@ export class UniversalRequestAnalyzer {
             providerName: key,
             providerIn: 'body',
             isStatic: false,
-            required: true,
+            required: isSearch,
+            defaultValue: isSearch ? undefined : (hasVal ? val : undefined),
+            staticValue: hasVal ? String(val) : undefined,
           });
         });
         sampleBody = formObj;

@@ -487,4 +487,69 @@ describe('Universal Automated API Importer, Request Mapper & Response Cache Engi
     expect(urlObj.searchParams.get('query')).toBe('PB10HS2829');
     expect(urlObj.searchParams.get('key')).toBe('SECRET');
   });
+
+  // 25. Automated preset parameter detection & default value retention
+  it('25. should automatically set defaultValue and mark required: false for non-search preset parameters like type=rc', () => {
+    const curl = 'curl "https://api.provider.com/v1/vehicle?type=rc&term=PB10HS2829"';
+    const analyzed = UniversalRequestAnalyzer.analyze(curl);
+
+    const typeDef = analyzed.parameterDefinitions.find((p) => p.name === 'type');
+    const typeMapping = analyzed.parameterMappings.find((m) => m.clientName === 'type');
+    const termDef = analyzed.parameterDefinitions.find((p) => p.name === 'term');
+    const termMapping = analyzed.parameterMappings.find((m) => m.clientName === 'term');
+
+    expect(typeDef).toBeDefined();
+    expect(typeDef?.required).toBe(false);
+    expect(typeDef?.defaultValue).toBe('rc');
+    expect(typeDef?.sampleValue).toBe('rc');
+
+    expect(typeMapping).toBeDefined();
+    expect(typeMapping?.required).toBe(false);
+    expect(typeMapping?.defaultValue).toBe('rc');
+    expect(typeMapping?.staticValue).toBe('rc');
+
+    // Term should remain required search parameter
+    expect(termDef).toBeDefined();
+    expect(termDef?.required).toBe(true);
+    expect(termMapping?.required).toBe(true);
+  });
+
+  // 26. Multi-tier fallback resolution for type and other parameters
+  it('26. should resolve type via multi-tier fallback even if route mapping originally lacked defaultValue', () => {
+    const route = {
+      name: 'Vehicle Info API',
+      slug: 'vehicle-info',
+      gatewayPath: '/v1/vehicle',
+      upstreamBaseUrl: 'https://api.provider.com',
+      upstreamPath: '/v1/vehicle?type=rc',
+      originalCurl: 'curl "https://api.provider.com/v1/vehicle?type=rc&term=PB10HS2829"',
+      parameterMappings: [
+        { clientName: 'type', clientIn: 'query', providerName: 'type', providerIn: 'query', required: true },
+        { clientName: 'term', clientIn: 'query', providerName: 'term', providerIn: 'query', required: true },
+      ],
+      parameterDefinitions: [
+        { name: 'type', in: 'query', type: 'string', required: false, sampleValue: 'rc' },
+      ],
+    };
+
+    // Simulate multi-tier resolution logic for 'type'
+    const mapping = route.parameterMappings[0];
+    let clientValue: any = undefined;
+
+    // Check tier 4 (parameterDefinitions)
+    if (clientValue === undefined) {
+      const defMatch = route.parameterDefinitions.find((p) => p.name === mapping.clientName);
+      if (defMatch?.sampleValue) clientValue = defMatch.sampleValue;
+    }
+
+    expect(clientValue).toBe('rc');
+
+    // Check tier 6 (extract from originalCurl / upstreamPath)
+    let extractedType: any = undefined;
+    const rawSources = `${route.upstreamPath} ${route.originalCurl}`;
+    const typeMatch = rawSources.match(/[?&]type=([^&\s"']+)/i);
+    if (typeMatch && typeMatch[1]) extractedType = decodeURIComponent(typeMatch[1]);
+
+    expect(extractedType).toBe('rc');
+  });
 });

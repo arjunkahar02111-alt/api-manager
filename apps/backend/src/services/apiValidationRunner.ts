@@ -164,6 +164,9 @@ export class ApiValidationRunner {
         } else if (m.isStatic && m.staticValue !== undefined) {
           if (m.providerIn === 'query') urlObj.searchParams.set(m.providerName, String(m.staticValue));
           if (m.providerIn === 'header') forwardedHeaders[m.providerName.toLowerCase()] = String(m.staticValue);
+        } else if (m.defaultValue !== undefined && !urlObj.searchParams.has(m.providerName)) {
+          if (m.providerIn === 'query') urlObj.searchParams.set(m.providerName, String(m.defaultValue));
+          if (m.providerIn === 'header') forwardedHeaders[m.providerName.toLowerCase()] = String(m.defaultValue);
         }
       }
     }

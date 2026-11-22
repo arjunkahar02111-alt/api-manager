@@ -414,25 +414,158 @@ export class ProxyEngine {
         }
       }
 
-      // Check required validation
+      // Automated Multi-Tier Parameter Resolution for clientValue
       if (clientValue === undefined) {
-        if (mapping.defaultValue !== undefined) {
-          clientValue = mapping.defaultValue;
-        } else if (mapping.required) {
-          res.status(400).json({
-            success: false,
-            error: {
-              code: 'MISSING_REQUIRED_PARAMETER',
-              message: `Required parameter '${mapping.clientName}' is missing from request ${mapping.clientIn}.`,
-            },
-          });
-          return {
-            statusCode: 400,
-            durationMs: Date.now() - start,
-            requestBytes: 0,
-            responseBytes: 0,
-            upstreamStatus: 400,
-          };
+        // Tier 1: Cross-location lookup (e.g. client sent query param for body mapping or body field for query mapping)
+        if (mapping.clientIn === 'query') {
+          if (isJsonRequestBody && parsedJsonBody?.[mapping.clientName] !== undefined) {
+            clientValue = parsedJsonBody[mapping.clientName];
+          } else if (req.headers[mapping.clientName.toLowerCase()] !== undefined) {
+            clientValue = req.headers[mapping.clientName.toLowerCase()];
+          }
+        } else if (mapping.clientIn === 'body') {
+          if (incomingClientParams.has(mapping.clientName)) {
+            clientValue = incomingClientParams.get(mapping.clientName);
+          } else if (req.headers[mapping.clientName.toLowerCase()] !== undefined) {
+            clientValue = req.headers[mapping.clientName.toLowerCase()];
+          }
+        }
+
+        // Tier 2: Check search synonyms if search term was provided anywhere in request
+        if (clientValue === undefined) {
+          const lowerClient = mapping.clientName.toLowerCase();
+          const lowerProvider = mapping.providerName.toLowerCase();
+          if ((SEARCH_SYNONYMS.includes(lowerClient) || SEARCH_SYNONYMS.includes(lowerProvider)) && clientSearchVal) {
+            clientValue = clientSearchVal;
+          }
+        }
+
+        // Tier 3: Explicit defaultValue, staticValue, or sampleValue on mapping
+        if (clientValue === undefined) {
+          if (mapping.defaultValue !== undefined && mapping.defaultValue !== null && mapping.defaultValue !== '') {
+            clientValue = mapping.defaultValue;
+          } else if (mapping.staticValue !== undefined && mapping.staticValue !== null && mapping.staticValue !== '') {
+            clientValue = mapping.staticValue;
+          } else if ((mapping as any).sampleValue !== undefined && (mapping as any).sampleValue !== null && (mapping as any).sampleValue !== '') {
+            clientValue = (mapping as any).sampleValue;
+          }
+        }
+
+        // Tier 4: Look up defaultValue or sampleValue in route.parameterDefinitions
+        if (clientValue === undefined && Array.isArray((route as any).parameterDefinitions)) {
+          const defMatch = (route as any).parameterDefinitions.find(
+            (p: any) => p && (
+              (p.name && p.name.toLowerCase() === mapping.clientName.toLowerCase()) ||
+              (p.name && p.name.toLowerCase() === mapping.providerName.toLowerCase())
+            )
+          );
+          if (defMatch) {
+            if (defMatch.defaultValue !== undefined && defMatch.defaultValue !== null && defMatch.defaultValue !== '') {
+              clientValue = defMatch.defaultValue;
+            } else if (defMatch.sampleValue !== undefined && defMatch.sampleValue !== null && defMatch.sampleValue !== '') {
+              clientValue = defMatch.sampleValue;
+            }
+          }
+        }
+
+        // Tier 5: Upstream URL searchParams from upstreamPath / queryFromUpstream
+        if (clientValue === undefined && mapping.providerIn === 'query') {
+          if (urlObj.searchParams.has(mapping.providerName) && urlObj.searchParams.get(mapping.providerName)) {
+            clientValue = urlObj.searchParams.get(mapping.providerName);
+          } else if (urlObj.searchParams.has(mapping.clientName) && urlObj.searchParams.get(mapping.clientName)) {
+            clientValue = urlObj.searchParams.get(mapping.clientName);
+          }
+        }
+
+        // Tier 6: Extract parameter value from raw upstream URL / cURL text
+        if (clientValue === undefined) {
+          const rawSources = [
+            queryFromUpstream,
+            route.upstreamPath || '',
+            route.upstreamBaseUrl || '',
+            (route as any).originalCurl || '',
+            JSON.stringify((route as any).sampleRequest || ''),
+          ].join(' ');
+
+          const escapeReg = (s: string) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+          const pRegex = new RegExp(`[?&]${escapeReg(mapping.providerName)}=([^&\\s"']+)`, 'i');
+          const pMatch = rawSources.match(pRegex);
+          if (pMatch && pMatch[1]) {
+            clientValue = decodeURIComponent(pMatch[1]);
+          } else {
+            const cRegex = new RegExp(`[?&]${escapeReg(mapping.clientName)}=([^&\\s"']+)`, 'i');
+            const cMatch = rawSources.match(cRegex);
+            if (cMatch && cMatch[1]) {
+              clientValue = decodeURIComponent(cMatch[1]);
+            }
+          }
+        }
+
+        // Tier 7: Smart Contextual Fallback for 'type' and standard provider parameters
+        if (clientValue === undefined) {
+          const lowerClient = mapping.clientName.toLowerCase();
+          const lowerProvider = mapping.providerName.toLowerCase();
+
+          if (lowerClient === 'type' || lowerProvider === 'type') {
+            const contextText = `${route.name || ''} ${route.slug || ''} ${route.gatewayPath || ''} ${route.upstreamPath || ''} ${route.upstreamBaseUrl || ''} ${(route as any).description || ''} ${(route as any).originalCurl || ''}`.toLowerCase();
+            if (contextText.includes('challan')) {
+              clientValue = 'challan';
+            } else if (contextText.includes('dl') || contextText.includes('driving')) {
+              clientValue = 'dl';
+            } else if (contextText.includes('pan')) {
+              clientValue = 'pan';
+            } else if (contextText.includes('aadhaar') || contextText.includes('aadhar')) {
+              clientValue = 'aadhaar';
+            } else if (contextText.includes('voter') || contextText.includes('epic')) {
+              clientValue = 'voter';
+            } else if (contextText.includes('fastag')) {
+              clientValue = 'fastag';
+            } else if (contextText.includes('passport')) {
+              clientValue = 'passport';
+            } else if (contextText.includes('ifsc') || contextText.includes('bank')) {
+              clientValue = 'ifsc';
+            } else if (contextText.includes('gst')) {
+              clientValue = 'gst';
+            } else {
+              clientValue = 'rc';
+            }
+          } else if (lowerClient === 'format' || lowerClient === 'response_format' || lowerClient === 'output') {
+            clientValue = 'json';
+          } else if (lowerClient === 'lang' || lowerClient === 'language') {
+            clientValue = 'en';
+          } else if (lowerClient === 'source') {
+            clientValue = 'api';
+          } else if (lowerClient === 'action' || lowerClient === 'op') {
+            clientValue = 'search';
+          } else if (lowerClient === 'mode') {
+            clientValue = 'live';
+          } else if (lowerClient === 'limit') {
+            clientValue = '10';
+          } else if (lowerClient === 'page') {
+            clientValue = '1';
+          }
+        }
+
+        // Tier 8: Required Validation Guard
+        // Only trigger MISSING_REQUIRED_PARAMETER if it is genuinely a search/lookup parameter and no input was provided
+        if (clientValue === undefined && mapping.required) {
+          const isSearchParam = SEARCH_SYNONYMS.includes(mapping.clientName.toLowerCase());
+          if (isSearchParam && !clientSearchVal) {
+            res.status(400).json({
+              success: false,
+              error: {
+                code: 'MISSING_REQUIRED_PARAMETER',
+                message: `Required parameter '${mapping.clientName}' is missing from request.`,
+              },
+            });
+            return {
+              statusCode: 400,
+              durationMs: Date.now() - start,
+              requestBytes: 0,
+              responseBytes: 0,
+              upstreamStatus: 400,
+            };
+          }
         }
       }
 
@@ -505,6 +638,25 @@ export class ProxyEngine {
       urlObj.searchParams.set('query', clientSearchVal);
     }
 
+    // Universal upstream safeguard for 'type' parameter:
+    if (!urlObj.searchParams.has('type') || !urlObj.searchParams.get('type')) {
+      const fullUpstreamText = `${route.upstreamBaseUrl || ''} ${route.upstreamPath || ''} ${(route.parameterMappings || []).map((m: any) => `${m.providerName} ${m.clientName}`).join(' ')} ${(route as any).originalCurl || ''}`.toLowerCase();
+      if (fullUpstreamText.includes('type')) {
+        let detectedType = 'rc';
+        const typeMatch = fullUpstreamText.match(/[?&]type=([^&\s"']+)/i);
+        if (typeMatch && typeMatch[1]) {
+          detectedType = decodeURIComponent(typeMatch[1]);
+        } else if (fullUpstreamText.includes('challan')) {
+          detectedType = 'challan';
+        } else if (fullUpstreamText.includes('dl') || fullUpstreamText.includes('driving')) {
+          detectedType = 'dl';
+        } else if (fullUpstreamText.includes('pan')) {
+          detectedType = 'pan';
+        }
+        urlObj.searchParams.set('type', detectedType);
+      }
+    }
+
     if (isJsonRequestBody && parsedJsonBody && typeof parsedJsonBody === 'object' && !Array.isArray(parsedJsonBody)) {
       if (clientSearchVal) {
         parsedJsonBody.term = clientSearchVal;
@@ -515,6 +667,21 @@ export class ProxyEngine {
         }
         if (parsedJsonBody.v_num !== undefined || upstreamText.includes('v_num')) {
           parsedJsonBody.v_num = clientSearchVal;
+        }
+      }
+      if (!parsedJsonBody.type) {
+        const fullUpstreamText = `${route.upstreamBaseUrl || ''} ${route.upstreamPath || ''} ${(route.parameterMappings || []).map((m: any) => `${m.providerName} ${m.clientName}`).join(' ')} ${(route as any).originalCurl || ''}`.toLowerCase();
+        if (fullUpstreamText.includes('type')) {
+          let detectedType = 'rc';
+          const typeMatch = fullUpstreamText.match(/[?&]type=([^&\s"']+)/i);
+          if (typeMatch && typeMatch[1]) {
+            detectedType = decodeURIComponent(typeMatch[1]);
+          } else if (fullUpstreamText.includes('challan')) {
+            detectedType = 'challan';
+          } else if (fullUpstreamText.includes('dl') || fullUpstreamText.includes('driving')) {
+            detectedType = 'dl';
+          }
+          parsedJsonBody.type = detectedType;
         }
       }
     }
