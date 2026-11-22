@@ -4,7 +4,7 @@ import zlib from 'node:zlib';
 import { decompress as decompressZstd } from 'fzstd';
 import { RouteConfig } from '../routing/routeResolver.js';
 import { validateUpstreamUrl } from '../security/ssrfGuard.js';
-import { UpstreamError, decryptSecret, ResponseSanitizer } from '@arjun/shared';
+import { UpstreamError, decryptSecret, ResponseSanitizer, extractUpstreamQuota } from '@arjun/shared';
 import { ResponseCacheManager } from '../cache/responseCacheManager.js';
 import type { Redis } from 'ioredis';
 
@@ -207,12 +207,23 @@ export class ProxyEngine {
           if (!res.getHeader(k)) res.setHeader(k, v);
         }
 
-        res.status(cached.statusCode).send(cached.body);
+        let cacheBody = cached.body;
+        // Dynamically re-brand cached JSON with the current calling client's quota!
+        try {
+          const rawStr = Buffer.isBuffer(cacheBody) ? cacheBody.toString('utf-8') : String(cacheBody);
+          if (rawStr.trim().startsWith('{') || rawStr.trim().startsWith('[')) {
+            const parsed = JSON.parse(rawStr);
+            const rebranded = ResponseSanitizer.cleanAndRebrand(parsed, clientMeta, duration, true);
+            cacheBody = JSON.stringify(rebranded, null, 2);
+          }
+        } catch {}
+
+        res.status(cached.statusCode).send(cacheBody);
         return {
           statusCode: cached.statusCode,
           durationMs: duration,
           requestBytes: 0,
-          responseBytes: Buffer.isBuffer(cached.body) ? cached.body.length : Buffer.byteLength(String(cached.body)),
+          responseBytes: Buffer.isBuffer(cacheBody) ? cacheBody.length : Buffer.byteLength(String(cacheBody)),
           upstreamStatus: cached.statusCode,
         };
       }
@@ -806,7 +817,24 @@ export class ProxyEngine {
           const text = decompressedBuffer.toString('utf-8');
           const json = JSON.parse(text);
           if (json && typeof json === 'object') {
-            const cleaned = ResponseSanitizer.cleanAndRebrand(json, clientMeta, duration);
+            // Extract the real upstream API quota so that ONLY Admin can monitor it
+            const upstreamQuota = extractUpstreamQuota(json);
+            if (upstreamQuota && (upstreamQuota.reqLeft !== undefined || upstreamQuota.reqTotal !== undefined)) {
+              if (redis) {
+                redis.set(
+                  `gateway:upstream_quota:${route.id}`,
+                  JSON.stringify({
+                    ...upstreamQuota,
+                    lastSyncedAt: new Date().toISOString(),
+                  }),
+                  'EX',
+                  86400 * 7
+                ).catch(() => {});
+              }
+            }
+
+            // Clean foreign credits and real upstream limits, and inject the calling client's plan!
+            const cleaned = ResponseSanitizer.cleanAndRebrand(json, clientMeta, duration, false);
             finalBody = JSON.stringify(cleaned, null, 2);
             res.setHeader('content-type', 'application/json; charset=utf-8');
           }

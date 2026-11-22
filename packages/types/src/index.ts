@@ -170,6 +170,12 @@ export interface IApiCatalog {
   originalCurl?: string;
   sampleRequest?: any;
   sampleResponse?: any;
+  upstreamQuota?: {
+    reqLeft?: number;
+    reqTotal?: number;
+    expiry?: string;
+    lastSyncedAt?: Date | string;
+  };
   createdAt: Date;
   updatedAt: Date;
 }

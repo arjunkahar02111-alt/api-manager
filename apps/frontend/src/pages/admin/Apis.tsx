@@ -463,6 +463,15 @@ export const AdminApis: React.FC = () => {
                         <div className="text-[10px] text-[#737373] mt-0.5 uppercase">
                           Methods: {api.allowedMethods?.join(', ')} • Timeout: {api.timeoutMs}ms
                         </div>
+                        {api.upstreamQuota && (
+                          <div className="mt-1.5 flex items-center gap-1.5 font-mono text-[10px] text-amber-400 font-bold bg-[#1C1917] px-2 py-0.5 border border-amber-900/50 w-fit">
+                            <span className="text-[#A3A3A3]">Provider Quota (Admin Only):</span>
+                            <span className="text-white">{api.upstreamQuota.reqLeft?.toLocaleString()} / {api.upstreamQuota.reqTotal?.toLocaleString()} left</span>
+                            {api.upstreamQuota.expiry && (
+                              <span className="text-amber-500 font-normal">({api.upstreamQuota.expiry})</span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <Badge

@@ -16,12 +16,29 @@ export class CatalogService {
         { description: { $regex: filters.search, $options: 'i' } },
       ];
     }
-    return ApiCatalog.find(query).sort({ createdAt: -1 });
+    const apis = await ApiCatalog.find(query).sort({ createdAt: -1 }).lean();
+    const redis = getRedisClient();
+    for (const api of apis) {
+      try {
+        const cachedQuota = await redis.get(`gateway:upstream_quota:${api._id}`);
+        if (cachedQuota) {
+          (api as any).upstreamQuota = JSON.parse(cachedQuota);
+        }
+      } catch {}
+    }
+    return apis;
   }
 
   static async getApiById(id: string) {
-    const api = await ApiCatalog.findById(id);
+    const api = await ApiCatalog.findById(id).lean();
     if (!api) throw new NotFoundError('API endpoint not found');
+    const redis = getRedisClient();
+    try {
+      const cachedQuota = await redis.get(`gateway:upstream_quota:${api._id}`);
+      if (cachedQuota) {
+        (api as any).upstreamQuota = JSON.parse(cachedQuota);
+      }
+    } catch {}
     return api;
   }
 

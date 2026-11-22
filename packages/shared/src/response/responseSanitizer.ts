@@ -43,6 +43,21 @@ const FORBIDDEN_CREDIT_KEYS = new Set([
   'source_credit',
   'dev',
   'developer_contact',
+  // Upstream / Real API metadata keys that must never leak to end clients
+  'req_left',
+  'req_total',
+  'requests_total',
+  'total_requests',
+  'remaining_requests',
+  'remaining_quota',
+  'req_limit',
+  'rate_limit',
+  'upstream_quota',
+  'upstream_plan',
+  'expiry',
+  'cached',
+  'response_time',
+  'response_time_seconds',
 ]);
 
 function isTelegramOrCreditString(val: any): boolean {
@@ -127,15 +142,46 @@ function formatExpiryDate(d?: Date | string | null): string {
   return `${day}-${month}-${year}`;
 }
 
+export interface ExtractedUpstreamQuota {
+  reqLeft?: number;
+  reqTotal?: number;
+  expiry?: string;
+}
+
+/**
+ * Extracts the real upstream provider quota from raw response data
+ * so it can be monitored ONLY by Super Administrators in the dashboard.
+ */
+export function extractUpstreamQuota(rawJson: any): ExtractedUpstreamQuota | null {
+  if (!rawJson) return null;
+  const target = Array.isArray(rawJson) ? rawJson[0] : rawJson;
+  if (!target || typeof target !== 'object') return null;
+
+  const reqLeft = target.req_left ?? target.requests_left ?? target.credits_left ?? target.remaining_credits;
+  const reqTotal = target.req_total ?? target.requests_total ?? target.total_requests;
+  const expiry = target.expiry ?? target.expires_at ?? target.valid_till;
+
+  if (reqLeft !== undefined || reqTotal !== undefined || expiry !== undefined) {
+    return {
+      reqLeft: typeof reqLeft === 'number' ? reqLeft : (!isNaN(Number(reqLeft)) ? Number(reqLeft) : undefined),
+      reqTotal: typeof reqTotal === 'number' ? reqTotal : (!isNaN(Number(reqTotal)) ? Number(reqTotal) : undefined),
+      expiry: typeof expiry === 'string' ? expiry : undefined,
+    };
+  }
+  return null;
+}
+
 export class ResponseSanitizer {
   /**
    * Cleans foreign developer credits and Telegram watermarks,
-   * and injects the user's personal Karvion branding.
+   * completely strips real upstream provider quotas,
+   * and injects the user's personal Karvion branding and assigned plan.
    */
   static cleanAndRebrand(
     rawJson: any,
     meta?: SanitizerMeta,
-    durationMs = 0
+    durationMs = 0,
+    isCache = false
   ): any {
     if (!rawJson || typeof rawJson !== 'object') {
       return rawJson;
@@ -144,30 +190,51 @@ export class ResponseSanitizer {
     // Step 1: Recursively strip all foreign credits, telegram handles, and upstream limits
     const cleaned = recursiveClean(rawJson);
 
-    // If cleaned is an array, return cleaned array
+    // Helper to inject customer Karvion branding & quota onto a target object
+    const injectCustomerPlan = (targetObj: Record<string, any>) => {
+      targetObj.developer = meta?.developerTag || 'arjunkahar';
+
+      if (meta?.announcement) {
+        targetObj.announcement = meta.announcement;
+      }
+
+      if (meta?.reqLeft !== undefined) {
+        targetObj.req_left = meta.reqLeft;
+      }
+      if (meta?.reqTotal !== undefined) {
+        targetObj.req_total = meta.reqTotal;
+      }
+      if (meta?.expiresAt) {
+        targetObj.expiry = formatExpiryDate(meta.expiresAt);
+      }
+
+      targetObj.response_time = `${durationMs}ms`;
+      targetObj.response_time_seconds = Number((durationMs / 1000).toFixed(2));
+      if (isCache) {
+        targetObj.cached = true;
+      }
+    };
+
+    // If cleaned is an Array (e.g. [ { ... } ]), inject customer plan into the target item(s)
     if (Array.isArray(cleaned)) {
+      if (cleaned.length > 0) {
+        // First item (common in vehicle/lookup APIs that return a single-item array)
+        if (typeof cleaned[0] === 'object' && cleaned[0] !== null) {
+          injectCustomerPlan(cleaned[0]);
+        }
+        // If there are multiple items and the last item is a metadata object
+        if (cleaned.length > 1 && typeof cleaned[cleaned.length - 1] === 'object' && cleaned[cleaned.length - 1] !== null) {
+          injectCustomerPlan(cleaned[cleaned.length - 1]);
+        }
+      }
       return cleaned;
     }
 
-    // Step 2: Inject personal developer branding and customer quota stats
-    cleaned.developer = meta?.developerTag || 'arjunkahar';
-
-    if (meta?.announcement) {
-      cleaned.announcement = meta.announcement;
+    // If cleaned is an Object
+    if (typeof cleaned === 'object' && cleaned !== null) {
+      injectCustomerPlan(cleaned);
+      return cleaned;
     }
-
-    if (meta?.reqLeft !== undefined) {
-      cleaned.req_left = meta.reqLeft;
-    }
-    if (meta?.reqTotal !== undefined) {
-      cleaned.req_total = meta.reqTotal;
-    }
-    if (meta?.expiresAt) {
-      cleaned.expiry = formatExpiryDate(meta.expiresAt);
-    }
-
-    cleaned.response_time = `${durationMs}ms`;
-    cleaned.response_time_seconds = Number((durationMs / 1000).toFixed(2));
 
     return cleaned;
   }

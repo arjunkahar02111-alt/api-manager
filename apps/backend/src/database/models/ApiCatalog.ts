@@ -76,6 +76,12 @@ const ApiCatalogSchema = new Schema<ApiCatalogDocument>(
     },
     status: { type: String, enum: ['active', 'disabled', 'maintenance'], default: 'active', index: true },
     allowedPlans: { type: [String], default: ['*'] },
+    upstreamQuota: {
+      reqLeft: { type: Number },
+      reqTotal: { type: Number },
+      expiry: { type: String },
+      lastSyncedAt: { type: Date },
+    },
   },
   { timestamps: true }
 );

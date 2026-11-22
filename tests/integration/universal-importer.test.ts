@@ -18,6 +18,7 @@ import {
   ClientPackageGenerator,
   ResponseCacheManager,
   ResponseSanitizer,
+  extractUpstreamQuota,
   encryptSecret,
   decryptSecret,
   parseCurlCommand,
@@ -551,5 +552,95 @@ describe('Universal Automated API Importer, Request Mapper & Response Cache Engi
     if (typeMatch && typeMatch[1]) extractedType = decodeURIComponent(typeMatch[1]);
 
     expect(extractedType).toBe('rc');
+  });
+
+  // 27. Strip real upstream API quota from array response and inject customer's plan
+  it('27. should purge upstream req_left (794) & req_total (60000) from array responses and inject customer plan', () => {
+    const upstreamArrayPayload = [
+      {
+        vehicle_number: 'PB10HS2829',
+        owner: 'TEST USER',
+        status: true,
+        req_left: 794,
+        req_total: 60000,
+        expiry: '11-06-2027',
+        success: true,
+        cached: true,
+        response_time: '267ms',
+      },
+    ];
+
+    const customerMeta = {
+      developerTag: 'arjunkahar',
+      reqLeft: 95,
+      reqTotal: 100,
+      expiresAt: new Date('2026-12-22T23:59:59Z'),
+    };
+
+    const sanitized = ResponseSanitizer.cleanAndRebrand(upstreamArrayPayload, customerMeta, 180, false);
+
+    expect(Array.isArray(sanitized)).toBe(true);
+    expect(sanitized.length).toBe(1);
+
+    const item = sanitized[0];
+    expect(item.vehicle_number).toBe('PB10HS2829');
+    expect(item.owner).toBe('TEST USER');
+    expect(item.success).toBe(true);
+
+    // Verify real upstream numbers (794 and 60000) are purged
+    expect(item.req_left).not.toBe(794);
+    expect(item.req_total).not.toBe(60000);
+    expect(item.expiry).not.toBe('11-06-2027');
+
+    // Verify customer's assigned Karvion plan is injected
+    expect(item.developer).toBe('arjunkahar');
+    expect(item.req_left).toBe(95);
+    expect(item.req_total).toBe(100);
+    expect(item.expiry).toBe('22-12-2026');
+    expect(item.response_time).toBe('180ms');
+    expect(item.response_time_seconds).toBe(0.18);
+  });
+
+  // 28. Extract upstream provider quota for admin-only monitoring
+  it('28. should extract upstream provider quota from response for admin monitoring before sanitization', () => {
+    const upstreamPayload = [
+      {
+        vehicle_number: 'PB10HS2829',
+        req_left: 794,
+        req_total: 60000,
+        expiry: '11-06-2027',
+      },
+    ];
+
+    const upstreamQuota = extractUpstreamQuota(upstreamPayload);
+    expect(upstreamQuota).not.toBeNull();
+    expect(upstreamQuota?.reqLeft).toBe(794);
+    expect(upstreamQuota?.reqTotal).toBe(60000);
+    expect(upstreamQuota?.expiry).toBe('11-06-2027');
+  });
+
+  // 29. Dynamic customer re-branding on Cache HIT
+  it('29. should dynamically re-brand cached responses with current calling customer quota and set cached: true', () => {
+    const cachedResponse = {
+      vehicle_number: 'PB10HS2829',
+      status: true,
+      req_left: 100, // Previous cached value
+      req_total: 100,
+    };
+
+    const currentCustomerMeta = {
+      developerTag: 'client_bob',
+      reqLeft: 42,
+      reqTotal: 500,
+      expiresAt: new Date('2026-10-15T23:59:59Z'),
+    };
+
+    const rebranded = ResponseSanitizer.cleanAndRebrand(cachedResponse, currentCustomerMeta, 12, true);
+    expect(rebranded.developer).toBe('client_bob');
+    expect(rebranded.req_left).toBe(42);
+    expect(rebranded.req_total).toBe(500);
+    expect(rebranded.expiry).toBe('15-10-2026');
+    expect(rebranded.cached).toBe(true);
+    expect(rebranded.response_time).toBe('12ms');
   });
 });
