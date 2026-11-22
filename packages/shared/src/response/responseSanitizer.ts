@@ -132,14 +132,96 @@ function recursiveClean(obj: any): any {
   return obj;
 }
 
-function formatExpiryDate(d?: Date | string | null): string {
+export function formatExpiryDate(d?: Date | string | null): string {
   if (!d) return '31-12-2099';
+  if (typeof d === 'string') {
+    const trimmed = d.trim();
+    if (/^\d{2}-\d{2}-\d{4}$/.test(trimmed)) {
+      return trimmed;
+    }
+  }
   const date = new Date(d);
   if (isNaN(date.getTime())) return '31-12-2099';
   const day = String(date.getUTCDate()).padStart(2, '0');
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
   const year = date.getUTCFullYear();
   return `${day}-${month}-${year}`;
+}
+
+export interface GatewayErrorPayloadOptions {
+  code: string;
+  message: string;
+  details?: any;
+  developerTag?: string;
+  reqLeft?: number;
+  reqTotal?: number;
+  expiresAt?: Date | string | null;
+  durationMs?: number;
+  announcement?: any;
+  usage?: any;
+  extra?: Record<string, any>;
+}
+
+/**
+ * Standardized Karvion API Gateway Error Response Builder
+ * Ensures that EVERY error response (quota exceeded, parameter missing, access denied, etc.)
+ * is fully branded with developer metadata, user plan telemetry (req_left, req_total, expiry),
+ * response latency, and error details.
+ */
+export function buildGatewayErrorResponse(options: GatewayErrorPayloadOptions): Record<string, any> {
+  const duration = options.durationMs ?? 0;
+  const payload: Record<string, any> = {
+    status: false,
+    success: false,
+    message: options.message,
+    error: {
+      code: options.code,
+      message: options.message,
+      ...(options.details !== undefined ? { details: options.details } : {}),
+    },
+    developer: options.developerTag || 'arjunkahar',
+  };
+
+  if (options.announcement) {
+    payload.announcement = options.announcement;
+  }
+
+  // Quota & telemetry
+  if (options.reqLeft !== undefined) {
+    payload.req_left = options.reqLeft;
+  } else if (
+    options.code.includes('QUOTA') ||
+    options.code === 'DAILY_QUOTA_EXCEEDED' ||
+    options.code === 'MONTHLY_QUOTA_EXCEEDED' ||
+    options.code === 'LIFETIME_QUOTA_EXCEEDED'
+  ) {
+    payload.req_left = 0;
+  }
+
+  if (options.reqTotal !== undefined) {
+    payload.req_total = options.reqTotal;
+  } else if (payload.req_left !== undefined) {
+    payload.req_total = 100;
+  }
+
+  if (options.expiresAt) {
+    payload.expiry = formatExpiryDate(options.expiresAt);
+  } else if (payload.req_left !== undefined) {
+    payload.expiry = '31-12-2099';
+  }
+
+  payload.response_time = `${duration}ms`;
+  payload.response_time_seconds = Number((duration / 1000).toFixed(2));
+
+  if (options.usage) {
+    payload.usage = options.usage;
+  }
+
+  if (options.extra) {
+    Object.assign(payload, options.extra);
+  }
+
+  return payload;
 }
 
 export interface ExtractedUpstreamQuota {
@@ -203,15 +285,26 @@ export class ResponseSanitizer {
       }
       if (meta?.reqTotal !== undefined) {
         targetObj.req_total = meta.reqTotal;
+      } else if (meta?.reqLeft !== undefined && targetObj.req_total === undefined) {
+        targetObj.req_total = 100;
       }
       if (meta?.expiresAt) {
         targetObj.expiry = formatExpiryDate(meta.expiresAt);
+      } else if (meta?.reqLeft !== undefined && !targetObj.expiry) {
+        targetObj.expiry = '31-12-2099';
       }
 
       targetObj.response_time = `${durationMs}ms`;
       targetObj.response_time_seconds = Number((durationMs / 1000).toFixed(2));
       if (isCache) {
         targetObj.cached = true;
+      }
+
+      if (targetObj.status === undefined && typeof targetObj.success === 'boolean') {
+        targetObj.status = targetObj.success;
+      }
+      if (targetObj.success === undefined && typeof targetObj.status === 'boolean') {
+        targetObj.success = targetObj.status;
       }
     };
 

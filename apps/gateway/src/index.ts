@@ -11,7 +11,7 @@ import { KeyValidator } from './authentication/keyValidator.js';
 import { RouteResolver } from './routing/routeResolver.js';
 import { QuotaEngine } from './quota/quotaEngine.js';
 import { ProxyEngine } from './proxy/proxyEngine.js';
-import { isIpAllowed, AppError } from '@arjun/shared';
+import { isIpAllowed, AppError, buildGatewayErrorResponse, formatExpiryDate } from '@arjun/shared';
 import { AntiSharingGuard, getClientIp } from './security/antiSharingGuard.js';
 import { AnnouncementManager } from './announcements/announcementManager.js';
 
@@ -164,19 +164,21 @@ app.all('/v1*', async (req, res) => {
     if (/\b(sqlmap|nikto|acunetix|wpscan|masscan|zgrab|nmap|havij|netsparker|dirbuster)\b/i.test(userAgent)) {
       statusCode = 403;
       errorCode = 'WAF_BLOCKED';
-      return res.status(403).json({
-        success: false,
-        error: { code: 'WAF_BLOCKED', message: 'Request blocked by Web Application Firewall: Malicious automated scanner probing prohibited' },
-      });
+      return res.status(403).json(buildGatewayErrorResponse({
+        code: 'WAF_BLOCKED',
+        message: 'Request blocked by Web Application Firewall: Malicious automated scanner probing prohibited',
+        durationMs: Date.now() - start,
+      }));
     }
 
     if (/(?:\.\.[\/\\]|\%2e\%2e[\/\\]|\%2e\%2e\%2f|\.\.%2f|\.\.%5c|etc[\/\\](?:passwd|shadow))/i.test(req.url)) {
       statusCode = 403;
       errorCode = 'WAF_BLOCKED';
-      return res.status(403).json({
-        success: false,
-        error: { code: 'WAF_BLOCKED', message: 'Request blocked by Web Application Firewall: Path traversal sequence detected' },
-      });
+      return res.status(403).json(buildGatewayErrorResponse({
+        code: 'WAF_BLOCKED',
+        message: 'Request blocked by Web Application Firewall: Path traversal sequence detected',
+        durationMs: Date.now() - start,
+      }));
     }
 
     // Platform-Wide Maintenance Check
@@ -187,13 +189,10 @@ app.all('/v1*', async (req, res) => {
         if (maint.global || maint.gateway) {
           statusCode = 503;
           errorCode = 'API_MAINTENANCE';
-          return res.status(503).json({
-            success: false,
-            status: 'maintenance',
-            error: {
-              code: 'API_MAINTENANCE',
-              message: maint.message || 'This API is temporarily unavailable due to scheduled platform maintenance.',
-            },
+          return res.status(503).json(buildGatewayErrorResponse({
+            code: 'API_MAINTENANCE',
+            message: maint.message || 'This API is temporarily unavailable due to scheduled platform maintenance.',
+            durationMs: Date.now() - start,
             announcement: {
               active: true,
               type: 'maintenance',
@@ -201,10 +200,11 @@ app.all('/v1*', async (req, res) => {
               title: 'Scheduled Platform Maintenance',
               message: maint.message || 'Platform undergoing maintenance. Please retry in a few moments.',
             },
-            meta: {
-              retry_after: 900,
+            extra: {
+              status: 'maintenance',
+              meta: { retry_after: 900 },
             },
-          });
+          }));
         }
       } catch {}
     }
@@ -216,13 +216,11 @@ app.all('/v1*', async (req, res) => {
     if (!resolved) {
       statusCode = 404;
       errorCode = 'API_NOT_FOUND';
-      return res.status(404).json({
-        success: false,
-        error: {
-          code: 'API_NOT_FOUND',
-          message: `The API endpoint '${gatewayRoutePath}' does not exist in the catalog.`,
-        },
-      });
+      return res.status(404).json(buildGatewayErrorResponse({
+        code: 'API_NOT_FOUND',
+        message: `The API endpoint '${gatewayRoutePath}' does not exist in the catalog.`,
+        durationMs: Date.now() - start,
+      }));
     }
 
     const { route, subPath } = resolved;
@@ -231,19 +229,20 @@ app.all('/v1*', async (req, res) => {
     if (route.status === 'disabled') {
       statusCode = 403;
       errorCode = 'API_DISABLED';
-      return res.status(403).json({
-        success: false,
-        error: { code: 'API_DISABLED', message: 'This API endpoint is currently disabled by administrator.' },
-      });
+      return res.status(403).json(buildGatewayErrorResponse({
+        code: 'API_DISABLED',
+        message: 'This API endpoint is currently disabled by administrator.',
+        durationMs: Date.now() - start,
+      }));
     }
 
     if (route.status === 'maintenance') {
       statusCode = 503;
       errorCode = 'API_MAINTENANCE';
-      return res.status(503).json({
-        success: false,
-        status: 'maintenance',
-        error: { code: 'API_MAINTENANCE', message: 'This API endpoint is currently undergoing maintenance.' },
+      return res.status(503).json(buildGatewayErrorResponse({
+        code: 'API_MAINTENANCE',
+        message: 'This API endpoint is currently undergoing maintenance.',
+        durationMs: Date.now() - start,
         announcement: {
           active: true,
           type: 'maintenance',
@@ -251,23 +250,22 @@ app.all('/v1*', async (req, res) => {
           title: 'Scheduled Maintenance',
           message: 'This API is temporarily undergoing maintenance. Please try again later.',
         },
-        meta: {
-          retry_after: 900,
+        extra: {
+          status: 'maintenance',
+          meta: { retry_after: 900 },
         },
-      });
+      }));
     }
 
     if (!route.allowedMethods.includes(req.method)) {
       statusCode = 405;
       errorCode = 'METHOD_NOT_ALLOWED';
       res.setHeader('Allow', route.allowedMethods.join(', '));
-      return res.status(405).json({
-        success: false,
-        error: {
-          code: 'METHOD_NOT_ALLOWED',
-          message: `HTTP method ${req.method} is not permitted for this endpoint. Allowed methods: ${route.allowedMethods.join(', ')}`,
-        },
-      });
+      return res.status(405).json(buildGatewayErrorResponse({
+        code: 'METHOD_NOT_ALLOWED',
+        message: `HTTP method ${req.method} is not permitted for this endpoint. Allowed methods: ${route.allowedMethods.join(', ')}`,
+        durationMs: Date.now() - start,
+      }));
     }
 
     const rawKey = keyValidator.extractApiKey(req);
@@ -275,13 +273,11 @@ app.all('/v1*', async (req, res) => {
       statusCode = 401;
       errorCode = 'MISSING_API_KEY';
       await AntiSharingGuard.trackFailedKeyAttempt(clientIp, redis, null);
-      return res.status(401).json({
-        success: false,
-        error: {
-          code: 'MISSING_API_KEY',
-          message: 'API Key missing. Provide your key via header X-API-Key: arjun_live_... or Authorization: Bearer arjun_live_...',
-        },
-      });
+      return res.status(401).json(buildGatewayErrorResponse({
+        code: 'MISSING_API_KEY',
+        message: 'API Key missing. Provide your key via header X-API-Key: arjun_live_... or Authorization: Bearer arjun_live_...',
+        durationMs: Date.now() - start,
+      }));
     }
 
     try {
@@ -294,6 +290,18 @@ app.all('/v1*', async (req, res) => {
 
     // Strict Single-IP Locking & Anti-Key Sharing Enforcement
     await AntiSharingGuard.enforce(req, customer, redis);
+
+    // Match Active Announcement for Client & API Route
+    const activeAnnouncements = await AnnouncementManager.getActiveAnnouncements(redis);
+    const matchedAnnouncement = AnnouncementManager.matchAnnouncement(activeAnnouncements, {
+      apiId: route.id,
+      routeSlug: route.slug,
+      gatewayPath: gatewayRoutePath,
+      customerId: customer.customerId,
+      customerUsername: customer.username,
+      keyPrefix: customer.keyPrefix,
+      apiVersion: (route as any).version || 'v1',
+    });
 
     if (
       !customer.allowedApis.includes('*') &&
@@ -308,22 +316,31 @@ app.all('/v1*', async (req, res) => {
     ) {
       statusCode = 403;
       errorCode = 'API_ACCESS_DENIED';
-      return res.status(403).json({
-        success: false,
-        error: { code: 'API_ACCESS_DENIED', message: 'Your account does not have permission to access this API endpoint.' },
-      });
+      return res.status(403).json(buildGatewayErrorResponse({
+        code: 'API_ACCESS_DENIED',
+        message: 'Your account does not have permission to access this API endpoint.',
+        developerTag: customer.developerTag,
+        reqLeft: customer.dailyRequestLimit,
+        reqTotal: customer.dailyRequestLimit,
+        expiresAt: customer.expiresAt,
+        announcement: matchedAnnouncement || undefined,
+        durationMs: Date.now() - start,
+      }));
     }
 
     if (!isIpAllowed(clientIp, customer.allowedIps)) {
       statusCode = 403;
       errorCode = 'IP_NOT_ALLOWED';
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: 'IP_NOT_ALLOWED',
-          message: `Requests from IP address ${clientIp} are not permitted for this account.`,
-        },
-      });
+      return res.status(403).json(buildGatewayErrorResponse({
+        code: 'IP_NOT_ALLOWED',
+        message: `Requests from IP address ${clientIp} are not permitted for this account.`,
+        developerTag: customer.developerTag,
+        reqLeft: customer.dailyRequestLimit,
+        reqTotal: customer.dailyRequestLimit,
+        expiresAt: customer.expiresAt,
+        announcement: matchedAnnouncement || undefined,
+        durationMs: Date.now() - start,
+      }));
     }
 
     const quotaResult = await quotaEngine.checkAndReserve({
@@ -341,30 +358,27 @@ app.all('/v1*', async (req, res) => {
       errorCode = quotaResult.code || 'QUOTA_EXCEEDED';
       res.setHeader('X-RateLimit-Limit', customer.dailyRequestLimit.toString());
       res.setHeader('X-RateLimit-Remaining', '0');
-      return res.status(429).json({
-        success: false,
-        error: {
-          code: quotaResult.code,
-          message: quotaResult.message,
-        },
+      if (customer.expiresAt) {
+        res.setHeader('X-Expiry-Date', formatExpiryDate(customer.expiresAt));
+      }
+      const duration = Date.now() - start;
+      res.setHeader('X-Response-Time', `${duration}ms`);
+
+      return res.status(429).json(buildGatewayErrorResponse({
+        code: quotaResult.code || 'DAILY_QUOTA_EXCEEDED',
+        message: quotaResult.message || 'Your daily API request quota has been exceeded.',
+        developerTag: customer.developerTag,
+        reqLeft: 0,
+        reqTotal: quotaResult.dailyLimit || customer.dailyRequestLimit,
+        expiresAt: customer.expiresAt,
+        announcement: matchedAnnouncement || undefined,
+        durationMs: duration,
         usage: quotaResult.usage,
-      });
+      }));
     }
 
     res.setHeader('X-RateLimit-Limit', (quotaResult.dailyLimit || customer.dailyRequestLimit).toString());
     res.setHeader('X-RateLimit-Remaining', (quotaResult.remainingDaily ?? 0).toString());
-
-    // Match Active Announcement for Client & API Route
-    const activeAnnouncements = await AnnouncementManager.getActiveAnnouncements(redis);
-    const matchedAnnouncement = AnnouncementManager.matchAnnouncement(activeAnnouncements, {
-      apiId: route.id,
-      routeSlug: route.slug,
-      gatewayPath: gatewayRoutePath,
-      customerId: customer.customerId,
-      customerUsername: customer.username,
-      keyPrefix: customer.keyPrefix,
-      apiVersion: (route as any).version || 'v1',
-    });
 
     let proxyResult;
     try {
@@ -387,22 +401,34 @@ app.all('/v1*', async (req, res) => {
       }
     }
   } catch (err: any) {
+    const duration = Date.now() - start;
     if (err instanceof AppError) {
       statusCode = err.statusCode;
       errorCode = err.code;
-      return res.status(err.statusCode).json({
-        success: false,
-        error: { code: err.code, message: err.message },
-      });
+      return res.status(err.statusCode).json(buildGatewayErrorResponse({
+        code: err.code,
+        message: err.message,
+        details: err.details,
+        developerTag: customer?.developerTag,
+        reqLeft: customer?.dailyRequestLimit,
+        reqTotal: customer?.dailyRequestLimit,
+        expiresAt: customer?.expiresAt,
+        durationMs: duration,
+      }));
     }
 
     statusCode = 500;
     errorCode = 'GATEWAY_ERROR';
     console.error('[Gateway] Unexpected error:', err);
-    return res.status(500).json({
-      success: false,
-      error: { code: 'GATEWAY_ERROR', message: 'Internal API Gateway error' },
-    });
+    return res.status(500).json(buildGatewayErrorResponse({
+      code: 'GATEWAY_ERROR',
+      message: 'Internal API Gateway error',
+      developerTag: customer?.developerTag,
+      reqLeft: customer?.dailyRequestLimit,
+      reqTotal: customer?.dailyRequestLimit,
+      expiresAt: customer?.expiresAt,
+      durationMs: duration,
+    }));
   } finally {
     const duration = Date.now() - start;
     const sourceIp = getClientIp(req);

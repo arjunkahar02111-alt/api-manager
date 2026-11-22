@@ -4,7 +4,7 @@ import zlib from 'node:zlib';
 import { decompress as decompressZstd } from 'fzstd';
 import { RouteConfig } from '../routing/routeResolver.js';
 import { validateUpstreamUrl } from '../security/ssrfGuard.js';
-import { UpstreamError, decryptSecret, ResponseSanitizer, extractUpstreamQuota } from '@arjun/shared';
+import { UpstreamError, decryptSecret, ResponseSanitizer, extractUpstreamQuota, buildGatewayErrorResponse, formatExpiryDate } from '@arjun/shared';
 import { ResponseCacheManager } from '../cache/responseCacheManager.js';
 import type { Redis } from 'ioredis';
 
@@ -175,16 +175,6 @@ export interface ClientResponseMetadata {
   reqTotal?: number;
   expiresAt?: Date | string | null;
   announcement?: any;
-}
-
-function formatExpiryDate(d?: Date | string | null): string {
-  if (!d) return '31-12-2099';
-  const date = new Date(d);
-  if (isNaN(date.getTime())) return '31-12-2099';
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${day}-${month}-${year}`;
 }
 
 export interface ProxyResult {
@@ -634,16 +624,20 @@ export class ProxyEngine {
         if (clientValue === undefined && mapping.required) {
           const isSearchParam = SEARCH_SYNONYMS.includes(mapping.clientName.toLowerCase());
           if (isSearchParam && !clientSearchVal) {
-            res.status(400).json({
-              success: false,
-              error: {
-                code: 'MISSING_REQUIRED_PARAMETER',
-                message: `Required parameter '${mapping.clientName}' is missing from request.`,
-              },
-            });
+            const durationMs = Date.now() - start;
+            res.status(400).json(buildGatewayErrorResponse({
+              code: 'MISSING_REQUIRED_PARAMETER',
+              message: `Required parameter '${mapping.clientName}' is missing from request.`,
+              developerTag: clientMeta?.developerTag,
+              reqLeft: clientMeta?.reqLeft,
+              reqTotal: clientMeta?.reqTotal,
+              expiresAt: clientMeta?.expiresAt,
+              announcement: clientMeta?.announcement,
+              durationMs,
+            }));
             return {
               statusCode: 400,
-              durationMs: Date.now() - start,
+              durationMs,
               requestBytes: 0,
               responseBytes: 0,
               upstreamStatus: 400,
@@ -1057,13 +1051,16 @@ export class ProxyEngine {
       console.error('[ProxyEngine] Upstream error occurred:', err);
       const durationMs = Date.now() - start;
       if (err.name === 'AbortError' || err.name === 'TimeoutError') {
-        res.status(504).json({
-          success: false,
-          error: {
-            code: 'UPSTREAM_TIMEOUT',
-            message: `Upstream service timed out after ${route.timeoutMs}ms.`,
-          },
-        });
+        res.status(504).json(buildGatewayErrorResponse({
+          code: 'UPSTREAM_TIMEOUT',
+          message: `Upstream service timed out after ${route.timeoutMs}ms.`,
+          developerTag: clientMeta?.developerTag,
+          reqLeft: clientMeta?.reqLeft,
+          reqTotal: clientMeta?.reqTotal,
+          expiresAt: clientMeta?.expiresAt,
+          announcement: clientMeta?.announcement,
+          durationMs,
+        }));
         return {
           statusCode: 504,
           durationMs,
@@ -1073,14 +1070,17 @@ export class ProxyEngine {
         };
       }
 
-      res.status(502).json({
-        success: false,
-        error: {
-          code: 'UPSTREAM_ERROR',
-          message: 'Failed to communicate with configured upstream destination.',
-          details: err.message,
-        },
-      });
+      res.status(502).json(buildGatewayErrorResponse({
+        code: 'UPSTREAM_ERROR',
+        message: 'Failed to communicate with configured upstream destination.',
+        details: err.message,
+        developerTag: clientMeta?.developerTag,
+        reqLeft: clientMeta?.reqLeft,
+        reqTotal: clientMeta?.reqTotal,
+        expiresAt: clientMeta?.expiresAt,
+        announcement: clientMeta?.announcement,
+        durationMs,
+      }));
 
       return {
         statusCode: 502,
