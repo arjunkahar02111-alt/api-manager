@@ -1,9 +1,30 @@
 import { z } from 'zod';
 
 export const AdminLoginSchema = z.object({
-  username: z.string().min(3).max(50),
-  password: z.string().min(8).max(100),
-  totpCode: z.string().length(6).optional(),
+  username: z.string().min(1).max(50),
+  password: z.string().min(1).max(100),
+  totpCode: z.string().min(6).max(25).optional(),
+});
+
+export const AdminChangePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z
+    .string()
+    .min(10, 'Password must be at least 10 characters long')
+    .max(100)
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number')
+    .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character'),
+});
+
+export const AdminVerifyMfaSchema = z.object({
+  code: z.string().min(6).max(25),
+});
+
+export const AdminDisableMfaSchema = z.object({
+  password: z.string().min(1),
+  code: z.string().min(6).max(25),
 });
 
 export const CustomerLoginSchema = z.object({

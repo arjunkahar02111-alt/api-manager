@@ -10,6 +10,8 @@ const AdministratorSchema = new Schema<AdministratorDocument>(
     role: { type: String, enum: ['super_admin', 'admin'], default: 'super_admin' },
     totpEnabled: { type: Boolean, default: false },
     totpSecretEncrypted: { type: String },
+    backupCodesHashed: { type: [String], default: [] },
+    passwordChangedAt: { type: Date },
     isActive: { type: Boolean, default: true, index: true },
     activeSessionId: { type: String },
     currentLoginIp: { type: String },

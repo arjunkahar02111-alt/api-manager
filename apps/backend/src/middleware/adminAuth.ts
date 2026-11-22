@@ -16,21 +16,32 @@ export interface AuthenticatedAdminRequest extends Request {
 
 export async function requireAdminAuth(req: AuthenticatedAdminRequest, res: Response, next: NextFunction) {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedError('Admin authorization token required', 'NO_TOKEN');
+    let token: string | undefined;
+
+    // 1. Check HttpOnly Cookie (Primary Web Session)
+    if (req.cookies?.arjun_admin_token) {
+      token = req.cookies.arjun_admin_token;
+    } else if (req.signedCookies?.arjun_admin_token) {
+      token = req.signedCookies.arjun_admin_token;
     }
 
-    const token = authHeader.split(' ')[1];
+    // 2. Fallback to Authorization Header (Bearer token for API / automated testing clients)
     if (!token) {
-      throw new UnauthorizedError('Token is missing', 'NO_TOKEN');
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.split(' ')[1];
+      }
+    }
+
+    if (!token) {
+      throw new UnauthorizedError('Admin authorization token or session cookie required', 'NO_TOKEN');
     }
 
     let decoded: any;
     try {
       decoded = jwt.verify(token, config.jwt.adminSecret);
     } catch {
-      throw new UnauthorizedError('Invalid or expired admin token', 'TOKEN_EXPIRED');
+      throw new UnauthorizedError('Invalid or expired admin session token', 'TOKEN_EXPIRED');
     }
 
     const admin = await Administrator.findById(decoded.adminId);
@@ -38,13 +49,21 @@ export async function requireAdminAuth(req: AuthenticatedAdminRequest, res: Resp
       throw new ForbiddenError('Admin account inactive or not found', 'ADMIN_INACTIVE');
     }
 
-    // Strict Single-User Concurrent Login Enforcement
+    // Immediate token invalidation if password was changed after token issuance
+    if (admin.passwordChangedAt && decoded.iat) {
+      const tokenIssuedAtMs = decoded.iat * 1000;
+      if (tokenIssuedAtMs < admin.passwordChangedAt.getTime() - 1000) {
+        throw new UnauthorizedError('Password was updated. Please authenticate again.', 'PASSWORD_CHANGED');
+      }
+    }
+
+    // Validate server-side session in Redis / MongoDB (enforces idle timeout & revocation)
     if (decoded.sessionId) {
       const isSessionValid = await SecurityService.validateSession(admin._id.toString(), 'admin', decoded.sessionId);
       if (!isSessionValid) {
         throw new UnauthorizedError(
-          'Security Alert: Another login session was established on this administrator account. You have been automatically logged out for security.',
-          'CONCURRENT_LOGIN_TERMINATED'
+          'Security Notice: Administrator session has expired, was revoked, or terminated.',
+          'SESSION_TERMINATED'
         );
       }
     }

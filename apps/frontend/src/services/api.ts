@@ -38,6 +38,7 @@ export async function apiRequest<T = any>(
 
   try {
     const response = await fetch(endpoint, {
+      credentials: 'include',
       ...options,
       headers,
     });

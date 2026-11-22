@@ -18,8 +18,8 @@ import {
 } from 'lucide-react';
 
 export const Login: React.FC = () => {
-  const [adminUsername, setAdminUsername] = useState('admin');
-  const [adminPassword, setAdminPassword] = useState('AdminStrongSecurePassword2026!');
+  const [adminUsername, setAdminUsername] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
   const [totpCode, setTotpCode] = useState('');
   const [requires2FA, setRequires2FA] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -119,9 +119,10 @@ export const Login: React.FC = () => {
                 <input
                   type="text"
                   required
+                  autoComplete="username"
                   value={adminUsername}
                   onChange={(e) => setAdminUsername(e.target.value)}
-                  placeholder="admin"
+                  placeholder="Enter administrator username"
                   className="w-full bg-[#050508] border border-[#2A1A4A] pl-9 pr-3 py-2.5 text-xs text-[#F5F3FA] font-mono focus:outline-none focus:border-[#A020F0] transition-colors"
                 />
               </div>
@@ -138,9 +139,10 @@ export const Login: React.FC = () => {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
+                  autoComplete="current-password"
                   value={adminPassword}
                   onChange={(e) => setAdminPassword(e.target.value)}
-                  placeholder="••••••••••••••••"
+                  placeholder="Enter administrator passphrase"
                   className="w-full bg-[#050508] border border-[#2A1A4A] pl-9 pr-10 py-2.5 text-xs text-[#F5F3FA] font-mono focus:outline-none focus:border-[#A020F0] transition-colors"
                 />
                 <button

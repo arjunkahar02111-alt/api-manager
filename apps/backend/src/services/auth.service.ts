@@ -8,11 +8,13 @@ import {
   UnauthorizedError,
   ForbiddenError,
   ConflictError,
+  NotFoundError,
 } from '@arjun/shared';
 import { config } from '../config/index.js';
 import { logAdminAction } from './audit.service.js';
-import { SecurityService } from './security.service.js';
+import { SecurityService, normalizeIp } from './security.service.js';
 import { TotpService } from './totp.service.js';
+import { getRedisClient } from './redis.service.js';
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
@@ -34,24 +36,54 @@ export class AuthService {
     }
   }
 
-  static async adminLogin(username: string, password: string, sourceIp: string, userAgent?: string) {
-    const admin = await Administrator.findOne({ username: username.toLowerCase() });
+  static async adminLogin(
+    username: string,
+    password: string,
+    sourceIp: string,
+    userAgent?: string,
+    totpCode?: string
+  ) {
+    const normIp = normalizeIp(sourceIp);
+    const redis = getRedisClient();
+
+    // 1. Abuse & Rate-Limiting: Check failed attempts for this source IP
+    const ipFailuresKey = `login:failed:ip:${normIp}`;
+    const rawIpFailures = await redis.get(ipFailuresKey);
+    const ipFailures = rawIpFailures ? parseInt(rawIpFailures, 10) : 0;
+
+    if (ipFailures >= 10) {
+      throw new ForbiddenError(
+        'Too many failed login attempts from this network. Temporary lockout active for 15 minutes.',
+        'IP_THROTTLED'
+      );
+    }
+
+    // 2. Progressive login delay on repeated failures (mitigate automated credential stuffing)
+    if (ipFailures >= 2) {
+      const progressiveDelayMs = Math.min(2500, (ipFailures - 1) * 400);
+      await new Promise((resolve) => setTimeout(resolve, progressiveDelayMs));
+    }
+
+    const admin = await Administrator.findOne({ username: username.toLowerCase().trim() });
     if (!admin) {
-      throw new UnauthorizedError('Invalid credentials', 'INVALID_CREDENTIALS');
+      await redis.set(ipFailuresKey, (ipFailures + 1).toString(), 'EX', 900);
+      throw new UnauthorizedError('Invalid administrator clearance credentials', 'INVALID_CREDENTIALS');
     }
 
     if (!admin.isActive) {
       throw new ForbiddenError('Administrator account is deactivated', 'ACCOUNT_DEACTIVATED');
     }
 
+    // 3. Account lockout check
     if (admin.lockoutUntil && admin.lockoutUntil.getTime() > Date.now()) {
       const remainingMinutes = Math.ceil((admin.lockoutUntil.getTime() - Date.now()) / 60000);
       throw new ForbiddenError(
-        `Account locked due to multiple failed login attempts. Please try again in ${remainingMinutes} minutes.`,
+        `Account locked due to consecutive failed authentication attempts. Please try again in ${remainingMinutes} minutes.`,
         'ACCOUNT_LOCKED'
       );
     }
 
+    // 4. Password verification (scrypt timing-safe comparison)
     const isMatch = await verifyPassword(password, admin.passwordHash);
     if (!isMatch) {
       admin.failedLoginAttempts = (admin.failedLoginAttempts || 0) + 1;
@@ -59,6 +91,7 @@ export class AuthService {
         admin.lockoutUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
       }
       await admin.save();
+      await redis.set(ipFailuresKey, (ipFailures + 1).toString(), 'EX', 900);
 
       await logAdminAction({
         administratorId: admin._id.toString(),
@@ -66,26 +99,72 @@ export class AuthService {
         action: 'ADMIN_LOGIN_FAILED',
         resourceType: 'administrator',
         resourceId: admin._id.toString(),
-        sourceIp,
+        sourceIp: normIp,
         userAgent,
         result: 'failure',
-        errorMessage: 'Invalid password',
+        errorMessage: 'Invalid passphrase',
       });
 
-      throw new UnauthorizedError('Invalid credentials', 'INVALID_CREDENTIALS');
+      throw new UnauthorizedError('Invalid administrator clearance credentials', 'INVALID_CREDENTIALS');
     }
 
+    // 5. Multi-Factor Authentication (TOTP / Backup Code)
+    if (admin.totpEnabled) {
+      if (!totpCode || !totpCode.trim()) {
+        throw new UnauthorizedError('Two-factor authentication code required', '2FA_REQUIRED');
+      }
+
+      const cleanCode = totpCode.trim();
+      let isValidMfa = false;
+
+      // Check standard 6-digit TOTP
+      if (cleanCode.length === 6 && admin.totpSecretEncrypted) {
+        isValidMfa = TotpService.verifyTotp(admin.totpSecretEncrypted, cleanCode);
+      }
+
+      // Check backup recovery code if not valid TOTP
+      if (!isValidMfa && admin.backupCodesHashed && admin.backupCodesHashed.length > 0) {
+        const backupResult = TotpService.consumeBackupCode(cleanCode, admin.backupCodesHashed);
+        if (backupResult.valid) {
+          isValidMfa = true;
+          admin.backupCodesHashed = backupResult.remainingCodes;
+          await admin.save();
+        }
+      }
+
+      if (!isValidMfa) {
+        admin.failedLoginAttempts = (admin.failedLoginAttempts || 0) + 1;
+        await admin.save();
+        await redis.set(ipFailuresKey, (ipFailures + 1).toString(), 'EX', 900);
+
+        await logAdminAction({
+          administratorId: admin._id.toString(),
+          administratorUsername: admin.username,
+          action: 'ADMIN_LOGIN_MFA_FAILED',
+          resourceType: 'administrator',
+          resourceId: admin._id.toString(),
+          sourceIp: normIp,
+          userAgent,
+          result: 'failure',
+          errorMessage: 'Invalid 2FA code',
+        });
+
+        throw new UnauthorizedError('Invalid two-factor authentication code', 'INVALID_2FA');
+      }
+    }
+
+    // 6. Reset failed attempts & clear lockout upon successful credentials + MFA
     admin.failedLoginAttempts = 0;
     admin.lockoutUntil = undefined;
     admin.lastLoginAt = new Date();
-    admin.lastLoginIp = sourceIp;
-    admin.currentLoginIp = sourceIp;
+    admin.lastLoginIp = normIp;
+    admin.currentLoginIp = normIp;
     admin.currentLoginUserAgent = userAgent;
-
-    // Issue unique single-user session ID (terminates any previous active session)
-    const sessionId = await SecurityService.issueSession(admin._id.toString(), 'admin');
-    admin.activeSessionId = sessionId;
     await admin.save();
+    await redis.del(ipFailuresKey);
+
+    // 7. Issue rotated session ID with device tracking & Redis/MongoDB persistence
+    const sessionId = await SecurityService.issueSession(admin._id.toString(), 'admin', normIp, userAgent);
 
     const accessToken = jwt.sign(
       { adminId: admin._id.toString(), username: admin.username, role: admin.role, sessionId },
@@ -105,7 +184,7 @@ export class AuthService {
       action: 'ADMIN_LOGIN_SUCCESS',
       resourceType: 'administrator',
       resourceId: admin._id.toString(),
-      sourceIp,
+      sourceIp: normIp,
       userAgent,
       result: 'success',
     });
@@ -115,11 +194,174 @@ export class AuthService {
         id: admin._id.toString(),
         username: admin.username,
         role: admin.role,
+        totpEnabled: admin.totpEnabled,
         lastLoginAt: admin.lastLoginAt,
       },
+      sessionId,
       accessToken,
       refreshToken,
     };
+  }
+
+  /**
+   * Password change with current password validation, strong hashing, and session revocation
+   */
+  static async changeAdminPassword(
+    adminId: string,
+    currentPass: string,
+    newPass: string,
+    sourceIp: string,
+    userAgent?: string
+  ) {
+    const admin = await Administrator.findById(adminId);
+    if (!admin) {
+      throw new NotFoundError('Administrator not found');
+    }
+
+    const isMatch = await verifyPassword(currentPass, admin.passwordHash);
+    if (!isMatch) {
+      throw new UnauthorizedError('Current password is incorrect', 'INVALID_CURRENT_PASSWORD');
+    }
+
+    if (currentPass === newPass) {
+      throw new ConflictError('New password cannot be identical to current password');
+    }
+
+    const passwordHash = await hashPassword(newPass);
+    admin.passwordHash = passwordHash;
+    admin.passwordChangedAt = new Date();
+    await admin.save();
+
+    // Revoke all existing sessions across all devices
+    await SecurityService.revokeAllSessions(adminId, 'admin');
+
+    await logAdminAction({
+      administratorId: admin._id.toString(),
+      administratorUsername: admin.username,
+      action: 'ADMIN_PASSWORD_CHANGED',
+      resourceType: 'administrator',
+      resourceId: admin._id.toString(),
+      sourceIp: normalizeIp(sourceIp),
+      userAgent,
+      result: 'success',
+    });
+
+    return { message: 'Password updated successfully. All sessions revoked.' };
+  }
+
+  static async getAdminById(adminId: string) {
+    const admin = await Administrator.findById(adminId).lean();
+    if (!admin) return null;
+    return {
+      id: admin._id.toString(),
+      username: admin.username,
+      role: admin.role,
+      totpEnabled: admin.totpEnabled,
+      lastLoginAt: admin.lastLoginAt,
+      lastLoginIp: admin.lastLoginIp,
+    };
+  }
+
+  /**
+   * Generates new TOTP setup configuration
+   */
+  static async setupAdminMfa(adminId: string) {
+    const admin = await Administrator.findById(adminId);
+    if (!admin) throw new NotFoundError('Administrator not found');
+
+    const secret = TotpService.generateSecret();
+    const otpauthUri = TotpService.generateOtpauthUri(admin.username, secret, 'Karvion API Manager');
+
+    return { secret, otpauthUri };
+  }
+
+  /**
+   * Verifies initial TOTP code, enables MFA, and returns 8 single-use recovery backup codes
+   */
+  static async enableAdminMfa(adminId: string, secret: string, code: string, sourceIp: string, userAgent?: string) {
+    const admin = await Administrator.findById(adminId);
+    if (!admin) throw new NotFoundError('Administrator not found');
+
+    const isValid = TotpService.verifyTotp(secret, code.trim());
+    if (!isValid) {
+      throw new UnauthorizedError('Invalid TOTP verification code. Verification failed.', 'INVALID_2FA');
+    }
+
+    const { plainCodes, hashedCodes } = TotpService.generateBackupCodes();
+
+    admin.totpEnabled = true;
+    admin.totpSecretEncrypted = secret;
+    admin.backupCodesHashed = hashedCodes;
+    await admin.save();
+
+    await logAdminAction({
+      administratorId: admin._id.toString(),
+      administratorUsername: admin.username,
+      action: 'ADMIN_MFA_ENABLED',
+      resourceType: 'administrator',
+      resourceId: admin._id.toString(),
+      sourceIp: normalizeIp(sourceIp),
+      userAgent,
+      result: 'success',
+    });
+
+    return {
+      message: 'Multi-Factor Authentication enabled successfully',
+      backupCodes: plainCodes,
+    };
+  }
+
+  /**
+   * Disables MFA after current password and code verification
+   */
+  static async disableAdminMfa(
+    adminId: string,
+    password: string,
+    code: string,
+    sourceIp: string,
+    userAgent?: string
+  ) {
+    const admin = await Administrator.findById(adminId);
+    if (!admin) throw new NotFoundError('Administrator not found');
+
+    const isMatch = await verifyPassword(password, admin.passwordHash);
+    if (!isMatch) {
+      throw new UnauthorizedError('Current passphrase is required to disable MFA', 'INVALID_CREDENTIALS');
+    }
+
+    let isValid = false;
+    if (admin.totpSecretEncrypted) {
+      isValid = TotpService.verifyTotp(admin.totpSecretEncrypted, code.trim());
+    }
+
+    if (!isValid && admin.backupCodesHashed) {
+      const backupResult = TotpService.consumeBackupCode(code.trim(), admin.backupCodesHashed);
+      if (backupResult.valid) {
+        isValid = true;
+      }
+    }
+
+    if (!isValid) {
+      throw new UnauthorizedError('Invalid verification code', 'INVALID_2FA');
+    }
+
+    admin.totpEnabled = false;
+    admin.totpSecretEncrypted = undefined;
+    admin.backupCodesHashed = [];
+    await admin.save();
+
+    await logAdminAction({
+      administratorId: admin._id.toString(),
+      administratorUsername: admin.username,
+      action: 'ADMIN_MFA_DISABLED',
+      resourceType: 'administrator',
+      resourceId: admin._id.toString(),
+      sourceIp: normalizeIp(sourceIp),
+      userAgent,
+      result: 'success',
+    });
+
+    return { message: 'Multi-Factor Authentication disabled successfully' };
   }
 
   static async customerKeyLogin(rawApiKey: string) {

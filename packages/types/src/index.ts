@@ -46,6 +46,8 @@ export interface IAdministrator {
   role: Role;
   totpEnabled: boolean;
   totpSecretEncrypted?: string;
+  backupCodesHashed?: string[];
+  passwordChangedAt?: Date;
   isActive: boolean;
   activeSessionId?: string;
   currentLoginIp?: string;
@@ -508,7 +510,13 @@ export type SecurityIncidentType =
   | 'UNAUTHORIZED_LOGIN'
   | 'CONCURRENT_LOGIN_TERMINATED'
   | 'SUSPICIOUS_UA'
-  | 'SSRF_ATTEMPT';
+  | 'SSRF_ATTEMPT'
+  | 'WAF_RULE_TRIGGERED'
+  | 'SQLI_ATTEMPT'
+  | 'XSS_ATTEMPT'
+  | 'PATH_TRAVERSAL_ATTEMPT'
+  | 'RCE_ATTEMPT'
+  | 'PROTOCOL_ABUSE';
 
 export type SecuritySeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
@@ -565,6 +573,8 @@ export interface IUserSession {
   expiresAt: Date;
   isActive: boolean;
   lastActivityAt: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export type HostingRuntime = 'nodejs' | 'python' | 'php' | 'custom';

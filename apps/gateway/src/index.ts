@@ -159,6 +159,26 @@ app.all('/v1*', async (req, res) => {
     const clientIp = getClientIp(req);
     await AntiSharingGuard.checkIpBlacklist(clientIp, redis);
 
+    // Gateway WAF Fast-Path Protection
+    const userAgent = (req.headers['user-agent'] as string) || '';
+    if (/\b(sqlmap|nikto|acunetix|wpscan|masscan|zgrab|nmap|havij|netsparker|dirbuster)\b/i.test(userAgent)) {
+      statusCode = 403;
+      errorCode = 'WAF_BLOCKED';
+      return res.status(403).json({
+        success: false,
+        error: { code: 'WAF_BLOCKED', message: 'Request blocked by Web Application Firewall: Malicious automated scanner probing prohibited' },
+      });
+    }
+
+    if (/(?:\.\.[\/\\]|\%2e\%2e[\/\\]|\%2e\%2e\%2f|\.\.%2f|\.\.%5c|etc[\/\\](?:passwd|shadow))/i.test(req.url)) {
+      statusCode = 403;
+      errorCode = 'WAF_BLOCKED';
+      return res.status(403).json({
+        success: false,
+        error: { code: 'WAF_BLOCKED', message: 'Request blocked by Web Application Firewall: Path traversal sequence detected' },
+      });
+    }
+
     // Platform-Wide Maintenance Check
     const rawMaint = await redis.get('system:maintenance').catch(() => null);
     if (rawMaint) {

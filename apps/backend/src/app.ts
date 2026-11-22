@@ -8,6 +8,7 @@ import mongoose from 'mongoose';
 import { config } from './config/index.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { wafMiddleware } from './middleware/waf.middleware.js';
 import { getRedisClient } from './services/redis.service.js';
 
 // Admin route imports
@@ -63,7 +64,31 @@ app.set('trust proxy', 1);
 
 app.use(
   helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'", 'https://api.karviontechnologies.in'],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+        imgSrc: ["'self'", 'data:', 'https:', 'blob:'],
+        connectSrc: [
+          "'self'",
+          'https://api.karviontechnologies.in',
+          'wss://api.karviontechnologies.in',
+          'http://localhost:*',
+          'ws://localhost:*',
+        ],
+        frameAncestors: ["'none'"],
+      },
+    },
+    hsts: {
+      maxAge: 63072000,
+      includeSubDomains: true,
+      preload: true,
+    },
+    xContentTypeOptions: true,
+    xFrameOptions: { action: 'deny' },
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
     crossOriginEmbedderPolicy: false,
   })
 );
@@ -92,6 +117,7 @@ app.use(compression());
 app.use(cookieParser(config.security.cookieSecret));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(wafMiddleware);
 app.use(requestLogger);
 
 // Health check endpoint
