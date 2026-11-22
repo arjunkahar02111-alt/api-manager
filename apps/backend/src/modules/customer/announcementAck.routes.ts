@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'node:crypto';
+import jwt from 'jsonwebtoken';
+import { config } from '../../config/index.js';
 import { Customer, ApiKey } from '../../database/models/index.js';
 import { AnnouncementService } from '../../services/announcement.service.js';
 import { UnauthorizedError, sendSuccess } from '@arjun/shared';
@@ -8,45 +10,65 @@ const router = Router();
 
 router.post('/:id/acknowledge', async (req: Request, res: Response, next) => {
   try {
-    const rawKey =
-      (req.headers['x-api-key'] as string) ||
-      (req.headers.authorization?.startsWith('Bearer ')
-        ? req.headers.authorization.split(' ')[1]
-        : (req.query.key as string));
+    let customerId: string | undefined = undefined;
+    let customerUsername: string = 'client';
+    let keyPrefix: string = 'client';
 
-    if (!rawKey) {
-      throw new UnauthorizedError(
-        'API Key required to acknowledge announcement. Provide via header X-API-Key or Authorization: Bearer <key>',
-        'MISSING_API_KEY'
-      );
+    // 1. Check if authenticated via Customer Session JWT token from Customer Portal
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ') && !authHeader.startsWith('Bearer arjun_')) {
+      const token = authHeader.split(' ')[1];
+      try {
+        const decoded: any = jwt.verify(token, config.jwt.customerSecret);
+        if (decoded?.customerId) {
+          const customer = await Customer.findById(decoded.customerId);
+          if (customer) {
+            customerId = customer._id.toString();
+            customerUsername = customer.username;
+            keyPrefix = (customer as any).keyPrefix || 'arjun_live';
+          }
+        }
+      } catch {}
     }
 
-    // Hash key and find matching active client
-    const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
-    const apiKeyDoc = await ApiKey.findOne({ keyHash, status: 'active' });
+    // 2. Otherwise authenticate via API key header or parameter
+    if (!customerId) {
+      const rawKey =
+        (req.headers['x-api-key'] as string) ||
+        (req.headers.authorization?.startsWith('Bearer ')
+          ? req.headers.authorization.split(' ')[1]
+          : (req.query.key as string));
 
-    let customerId: string;
-    let customerUsername: string = 'client';
-    let keyPrefix: string = rawKey.slice(0, 10);
+      if (!rawKey) {
+        throw new UnauthorizedError(
+          'API Key or Customer Session required to acknowledge announcement. Provide via header X-API-Key or Authorization: Bearer <key>',
+          'MISSING_API_KEY'
+        );
+      }
 
-    if (apiKeyDoc) {
-      customerId = apiKeyDoc.customerId;
-      const customer = await Customer.findById(customerId);
-      if (customer) {
+      // Hash key and find matching active client
+      const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
+      const apiKeyDoc = await ApiKey.findOne({ keyHash, status: 'active' });
+
+      if (apiKeyDoc) {
+        customerId = apiKeyDoc.customerId;
+        const customer = await Customer.findById(customerId);
+        if (customer) {
+          customerUsername = customer.username;
+        }
+        keyPrefix = apiKeyDoc.keyPrefix;
+      } else {
+        // Direct customer key lookup
+        const customer = await Customer.findOne({
+          $or: [{ apiKey: rawKey }, { apiKeyHash: keyHash }],
+        });
+        if (!customer) {
+          throw new UnauthorizedError('Invalid API Key provided', 'INVALID_API_KEY');
+        }
+        customerId = customer._id.toString();
         customerUsername = customer.username;
+        keyPrefix = (customer as any).keyPrefix || rawKey.slice(0, 10);
       }
-      keyPrefix = apiKeyDoc.keyPrefix;
-    } else {
-      // Direct customer key lookup
-      const customer = await Customer.findOne({
-        $or: [{ apiKey: rawKey }, { apiKeyHash: keyHash }],
-      });
-      if (!customer) {
-        throw new UnauthorizedError('Invalid API Key provided', 'INVALID_API_KEY');
-      }
-      customerId = customer._id.toString();
-      customerUsername = customer.username;
-      keyPrefix = (customer as any).keyPrefix || rawKey.slice(0, 10);
     }
 
     const clientIp = req.ip || req.socket.remoteAddress || 'unknown';

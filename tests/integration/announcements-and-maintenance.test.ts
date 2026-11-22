@@ -189,4 +189,49 @@ describe('Admin Dynamic Announcement & Maintenance Engine Suite', () => {
     expect(res.body.data.acknowledgmentRequired).toBe(true);
     expect(res.body.data.title).toContain('🚨 EMERGENCY: Platform Critical Incident');
   });
+
+  it('7. should dispatch a direct targeted announcement to an individual customer via /direct-user', async () => {
+    const res = await request(app)
+      .post('/api/v1/admin/announcements/direct-user')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        customerId,
+        customerUsername: 'client_ann_test',
+        targetApiKey: 'arjun_live_testclient',
+        title: 'Direct Quota Alert for client_ann_test',
+        message: 'Your integration is performing high-volume queries.',
+        type: 'warning',
+        severity: 'warning',
+        priority: 80,
+        acknowledgmentRequired: true,
+        recommendedAction: 'Check concurrency settings.',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.targetScope).toBe('client');
+    expect(res.body.data.targetClientId).toBe(customerId);
+    expect(res.body.data.targetCustomerUsername).toBe('client_ann_test');
+    expect(res.body.data.status).toBe('published');
+
+    // Verify AnnouncementManager matches for this target customer
+    const directAnnId = res.body.data.announcementId;
+
+    const matchedForTarget = AnnouncementManager.matchAnnouncement([res.body.data], {
+      customerId,
+      customerUsername: 'client_ann_test',
+      keyPrefix: 'arjun_live_testclient',
+    });
+    expect(matchedForTarget).not.toBeNull();
+    expect(matchedForTarget?.id).toBe(directAnnId);
+    expect(matchedForTarget?.type).toBe('warning');
+
+    // Verify AnnouncementManager does NOT match this direct announcement for a different customer
+    const matchedForOther = AnnouncementManager.matchAnnouncement([res.body.data], {
+      customerId: 'other_customer_9999',
+      customerUsername: 'other_user',
+      keyPrefix: 'arjun_live_other',
+    });
+    expect(matchedForOther).toBeNull();
+  });
 });

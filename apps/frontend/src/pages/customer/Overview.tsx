@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../services/api';
 import { Badge } from '../../components/Badge';
 import { StatCard } from '../../components/StatCard';
-import { Key, Activity, Calendar, Database, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Key, Activity, Calendar, Database, ShieldCheck, ArrowRight, AlertTriangle, Megaphone, CheckCircle2, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const CustomerOverview: React.FC = () => {
@@ -42,8 +42,117 @@ export const CustomerOverview: React.FC = () => {
   const dailyPct = usage?.daily?.limit ? Math.min(100, Math.round((usage.daily.used / usage.daily.limit) * 100)) : 0;
   const monthlyPct = usage?.monthly?.limit ? Math.min(100, Math.round((usage.monthly.used / usage.monthly.limit) * 100)) : 0;
 
+  const handleAcknowledge = async (id: string) => {
+    const res = await apiRequest(`/api/v1/customer/announcements/${id}/acknowledge`, { method: 'POST' }, 'customer');
+    if (res.success) {
+      fetchDashboard();
+    }
+  };
+
+  const activeAnnouncements = data?.announcements || [];
+
   return (
     <div className="p-8 space-y-8">
+      {/* Active Targeted & Mass Announcements Banner */}
+      {activeAnnouncements.length > 0 && (
+        <div className="space-y-3">
+          {activeAnnouncements.map((ann: any) => {
+            const isDirect = ann.targetScope === 'client';
+            const isEmergency = ann.type === 'emergency' || ann.severity === 'critical';
+
+            return (
+              <div
+                key={ann.id}
+                className={`p-5 rounded-none border-2 font-mono transition-all ${
+                  isEmergency
+                    ? 'bg-[#2A0808] border-[#EF4444] text-[#FCA5A5]'
+                    : isDirect
+                    ? 'bg-[#180A2E] border-[#A020F0] text-[#E9D5FF]'
+                    : 'bg-[#0B192C] border-[#0284C7] text-[#BAE6FD]'
+                }`}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-current/20 pb-3">
+                  <div className="flex items-center gap-2">
+                    {isEmergency ? (
+                      <AlertTriangle className="w-5 h-5 text-[#EF4444] shrink-0 animate-pulse" />
+                    ) : (
+                      <Megaphone className="w-5 h-5 text-[#A020F0] shrink-0" />
+                    )}
+                    <span className="font-bold text-white text-sm uppercase tracking-wide">
+                      {ann.title}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-[11px] font-bold">
+                    {isDirect && (
+                      <span className="px-2 py-0.5 bg-[#A020F0]/30 text-[#D8B4FE] border border-[#A020F0]/50 uppercase">
+                        🎯 Direct Message to You
+                      </span>
+                    )}
+                    {isEmergency && (
+                      <span className="px-2 py-0.5 bg-[#EF4444]/30 text-[#FCA5A5] border border-[#EF4444]/50 uppercase">
+                        🚨 Critical Platform Alert
+                      </span>
+                    )}
+                    <span className="px-2 py-0.5 bg-black/40 border border-current/30 uppercase">
+                      {ann.severity}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-3 text-xs text-white leading-relaxed whitespace-pre-wrap">
+                  {ann.message}
+                </div>
+
+                {ann.recommendedAction && (
+                  <div className="mt-3 p-2 bg-black/50 border border-current/30 text-xs text-white">
+                    <span className="font-bold text-[#FBBF24]">Action Recommended: </span>
+                    {ann.recommendedAction}
+                  </div>
+                )}
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-current/20">
+                  <div className="text-[11px] opacity-75">
+                    Dispatched: {new Date(ann.createdAt).toLocaleString()}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {ann.actionUrl && (
+                      <a
+                        href={ann.actionUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Action Link</span>
+                      </a>
+                    )}
+
+                    {ann.acknowledgmentRequired && (
+                      ann.acknowledged ? (
+                        <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-bold">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Acknowledged</span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleAcknowledge(ann.id)}
+                          className="px-4 py-1.5 bg-[#A020F0] hover:bg-[#7B2FFF] text-white text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Acknowledge Receipt</span>
+                        </button>
+                      )
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Account Header Banner */}
       <div className="bg-[#100D17] border border-[#262035] rounded-none p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>

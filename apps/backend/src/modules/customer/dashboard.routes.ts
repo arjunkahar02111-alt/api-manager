@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireCustomerAuth, AuthenticatedCustomerRequest } from '../../middleware/customerAuth.js';
 import { CustomerService } from '../../services/customer.service.js';
-import { Customer, ApiCatalog, RequestLog } from '../../database/models/index.js';
+import { Customer, ApiCatalog, RequestLog, Announcement } from '../../database/models/index.js';
 import { sendSuccess, NotFoundError } from '@arjun/shared';
 
 const router = Router();
@@ -27,6 +27,43 @@ router.get('/', async (req: AuthenticatedCustomerRequest, res, next) => {
     // Last request
     const lastLog = await RequestLog.findOne({ customerId }).sort({ timestamp: -1 }).lean();
 
+    // Active Announcements: Targeted Direct User Messages and Global Mass Broadcasts
+    const activeAnnouncements = await Announcement.find({
+      status: 'published',
+      $or: [
+        { targetScope: 'global' },
+        { targetScope: 'client', targetClientId: { $in: [customerId, customer.username] } },
+        { targetScope: 'client', targetCustomerUsername: customer.username },
+        { targetScope: 'apiKey', targetApiKey: req.customer!.keyPrefix },
+      ],
+      $and: [
+        { $or: [{ startDate: { $lte: new Date() } }, { startDate: null }, { startDate: { $exists: false } }] },
+        { $or: [{ expiresAt: { $gt: new Date() } }, { expiresAt: null }, { expiresAt: { $exists: false } }] },
+      ],
+    })
+      .sort({ priority: -1, createdAt: -1 })
+      .lean();
+
+    const announcements = activeAnnouncements.map((ann) => {
+      const isAcked = (ann.acknowledgments || []).some(
+        (a: any) => a.clientId === customerId || a.customerUsername === customer.username
+      );
+      return {
+        id: ann.announcementId,
+        title: ann.title,
+        message: ann.message,
+        type: ann.type,
+        severity: ann.severity,
+        priority: ann.priority,
+        targetScope: ann.targetScope,
+        recommendedAction: ann.recommendedAction,
+        actionUrl: ann.actionUrl,
+        acknowledgmentRequired: ann.acknowledgmentRequired,
+        acknowledged: isAcked,
+        createdAt: ann.createdAt,
+      };
+    });
+
     return sendSuccess(res, {
       profile: {
         id: customer._id,
@@ -41,6 +78,7 @@ router.get('/', async (req: AuthenticatedCustomerRequest, res, next) => {
       usage,
       assignedApisCount: apiCount,
       lastRequestAt: lastLog?.timestamp || null,
+      announcements,
     });
   } catch (err) {
     next(err);

@@ -99,7 +99,8 @@ export class AnnouncementManager {
         case 'client':
           return (
             (context.customerId && ann.targetClientId === context.customerId) ||
-            (context.customerUsername && ann.targetClientId === context.customerUsername)
+            (context.customerUsername && ann.targetClientId === context.customerUsername) ||
+            (context.customerUsername && ann.targetCustomerUsername === context.customerUsername)
           );
         case 'apiKey':
           return context.keyPrefix && ann.targetApiKey === context.keyPrefix;
@@ -112,8 +113,18 @@ export class AnnouncementManager {
 
     if (matches.length === 0) return null;
 
-    // Sort by priority descending
-    matches.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+    // Sort by priority with specificity weighting: targeted messages take precedence over general broadcasts
+    const getScore = (ann: any) => {
+      let score = Number(ann.priority) || 0;
+      if (ann.type === 'emergency') score += 1000;
+      if (ann.targetScope === 'apiKey') score += 200;
+      else if (ann.targetScope === 'client') score += 150;
+      else if (ann.targetScope === 'endpoint') score += 50;
+      else if (ann.targetScope === 'api') score += 25;
+      return score;
+    };
+
+    matches.sort((a, b) => getScore(b) - getScore(a));
     const selected = matches[0];
 
     return {

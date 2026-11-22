@@ -33,6 +33,7 @@ export interface IAnnouncement {
   targetApiId?: string;
   targetEndpoint?: string;
   targetClientId?: string;
+  targetCustomerUsername?: string;
   targetApiKey?: string;
   targetVersion?: string;
   startDate?: Date;
@@ -111,6 +112,7 @@ const AnnouncementSchema = new Schema<AnnouncementDocument>(
     targetApiId: { type: String, index: true },
     targetEndpoint: { type: String, index: true },
     targetClientId: { type: String, index: true },
+    targetCustomerUsername: { type: String, index: true },
     targetApiKey: { type: String, index: true },
     targetVersion: { type: String, index: true },
     startDate: { type: Date },

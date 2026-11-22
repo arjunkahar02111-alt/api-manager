@@ -56,6 +56,33 @@ router.post('/emergency', async (req: AuthenticatedAdminRequest, res, next) => {
   }
 });
 
+router.post('/direct-user', async (req: AuthenticatedAdminRequest, res, next) => {
+  try {
+    const { customerId, title, message } = req.body || {};
+    if (!customerId || !title || !message) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Target customer ID, title, and message are required for direct user dispatch.',
+        },
+      });
+    }
+
+    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+    const result = await AnnouncementService.dispatchDirectToUser(
+      req.body,
+      req.admin!.id,
+      req.admin!.username,
+      clientIp
+    );
+
+    return sendSuccess(res, result, 'Direct message dispatched successfully to targeted customer', 201);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
     const id = String(req.params.id);

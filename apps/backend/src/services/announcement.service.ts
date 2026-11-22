@@ -342,6 +342,52 @@ export class AnnouncementService {
   }
 
   /**
+   * Dispatch a direct, targeted announcement or message to an individual customer
+   */
+  static async dispatchDirectToUser(
+    target: {
+      customerId: string;
+      customerUsername?: string;
+      targetApiKey?: string;
+      title: string;
+      message: string;
+      type?: string;
+      severity?: 'information' | 'success' | 'warning' | 'critical';
+      priority?: number;
+      acknowledgmentRequired?: boolean;
+      recommendedAction?: string;
+      actionUrl?: string;
+    },
+    adminId: string,
+    adminUsername: string,
+    sourceIp: string
+  ): Promise<AnnouncementDocument> {
+    const announcement = await this.createAnnouncement(
+      {
+        title: target.title,
+        message: target.message,
+        type: target.type || 'general',
+        severity: target.severity || 'information',
+        priority: target.priority ?? 50,
+        targetScope: 'client',
+        targetClientId: target.customerId,
+        targetCustomerUsername: target.customerUsername,
+        targetApiKey: target.targetApiKey || undefined,
+        recommendedAction: target.recommendedAction,
+        actionUrl: target.actionUrl,
+        acknowledgmentRequired: target.acknowledgmentRequired ?? false,
+        status: 'published',
+        startDate: new Date(),
+      },
+      adminId,
+      adminUsername,
+      sourceIp
+    );
+
+    return this.publishAnnouncement(announcement.announcementId, adminId, adminUsername, sourceIp);
+  }
+
+  /**
    * Automated activation of scheduled announcements & expiration of ended announcements
    */
   static async processScheduledAndExpiring(): Promise<{ activated: number; expired: number }> {
