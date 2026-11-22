@@ -354,7 +354,7 @@ app.all('/v1*', async (req, res) => {
         reqTotal: quotaResult.dailyLimit || customer.dailyRequestLimit || 5000,
         expiresAt: customer.expiresAt,
         announcement: matchedAnnouncement || undefined,
-      }, subPath);
+      }, subPath, redis);
       statusCode = proxyResult.statusCode;
       requestBytes = proxyResult.requestBytes;
       responseBytes = proxyResult.responseBytes;

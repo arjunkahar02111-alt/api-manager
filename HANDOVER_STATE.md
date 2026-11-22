@@ -68,6 +68,7 @@ cd /var/www/arjun-api-manager && git pull origin main && bash update.sh
 | **RFC 8594 Sunset Headers** | Standards-compliant `Sunset` and `Deprecation` response header engine | `responseConfig.service.ts`, `ResponseStudio.tsx` |
 | **SHA-256 Audit Chaining** | Tamper-evident cryptographic hash chaining for administrator actions | `audit.service.ts`, `AdminAuditLog.ts` |
 | **Real-time Client Management** | Instant hard deletion, auto-purging of legacy records, and WebSocket synchronization | `Customers.tsx`, `RealtimeContext.tsx` |
+| **Universal API Importer & Proxy Engine** | cURL, OpenAPI, Postman ingestion, parameter mapping, AES-256 secret vault, response cache & multi-language code generator | `requestAnalyzer.ts`, `responseCacheManager.ts`, `UniversalApiImporterModal.tsx`, `importer.routes.ts` |
 
 ---
 

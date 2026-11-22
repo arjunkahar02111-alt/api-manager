@@ -259,3 +259,85 @@ export const UpdateHostingDeploymentSchema = z.object({
   entryPoint: z.string().optional(),
 });
 
+export const AnalyzeApiInputSchema = z.object({
+  rawInput: z.string().min(1, 'Please provide a cURL command, URL, OpenAPI JSON, or Postman JSON'),
+  inputType: z.enum(['curl', 'openapi', 'postman', 'url', 'auto']).default('auto'),
+  sampleRequest: z.record(z.unknown()).optional(),
+});
+
+export const ParameterDefinitionSchema = z.object({
+  name: z.string().min(1),
+  in: z.enum(['query', 'header', 'path', 'body']),
+  type: z.enum(['string', 'number', 'boolean', 'array', 'object']).default('string'),
+  required: z.boolean().default(false),
+  defaultValue: z.unknown().optional(),
+  description: z.string().optional(),
+  sampleValue: z.unknown().optional(),
+});
+
+export const ParameterMappingSchema = z.object({
+  clientName: z.string().min(1),
+  clientIn: z.enum(['query', 'header', 'path', 'body']),
+  providerName: z.string().min(1),
+  providerIn: z.enum(['query', 'header', 'path', 'body']),
+  isStatic: z.boolean().default(false).optional(),
+  staticValue: z.unknown().optional(),
+  isProviderCredential: z.boolean().default(false).optional(),
+  required: z.boolean().default(false).optional(),
+  defaultValue: z.unknown().optional(),
+  transform: z.enum(['none', 'trim', 'lowercase', 'uppercase']).default('none').optional(),
+});
+
+export const ProviderAuthConfigSchema = z.object({
+  type: z.enum(['none', 'api_key_query', 'api_key_header', 'bearer_token', 'basic_auth', 'custom_header']).default('none'),
+  paramName: z.string().optional(),
+  credentialValue: z.string().optional(), // Raw value from admin UI to be encrypted
+  encryptedCredential: z.string().optional(),
+  credentialPrefix: z.string().optional(),
+  headerFormat: z.string().optional(),
+  basicUsername: z.string().optional(),
+});
+
+export const ValidateApiInputSchema = z.object({
+  name: z.string().min(1).default('Sample API'),
+  upstreamBaseUrl: z.string().url(),
+  upstreamPath: z.string().default(''),
+  method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD']).default('GET'),
+  authConfig: ProviderAuthConfigSchema.optional(),
+  parameterMappings: z.array(ParameterMappingSchema).default([]),
+  requestBodyType: z.enum(['none', 'json', 'form-urlencoded', 'multipart', 'text', 'xml']).default('none').optional(),
+  sampleBody: z.unknown().optional(),
+  sampleQueryParams: z.record(z.unknown()).optional(),
+  sampleHeaders: z.record(z.string()).optional(),
+  timeoutMs: z.number().int().min(500).max(60000).default(15000),
+});
+
+export const PublishImportedApiSchema = z.object({
+  name: z.string().min(2).max(100),
+  slug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+  description: z.string().max(1000).default(''),
+  category: z.string().min(2).max(50).default('Imported APIs'),
+  version: z.string().default('v1'),
+  gatewayPath: z.string().regex(/^\/[a-zA-Z0-9_\-\/]+$/, 'Must start with /'),
+  upstreamBaseUrl: z.string().url(),
+  upstreamPath: z.string().default(''),
+  allowedMethods: z.array(z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'])).min(1),
+  authConfig: ProviderAuthConfigSchema.optional(),
+  parameterDefinitions: z.array(ParameterDefinitionSchema).default([]),
+  parameterMappings: z.array(ParameterMappingSchema).default([]),
+  requestBodyType: z.enum(['none', 'json', 'form-urlencoded', 'multipart', 'text', 'xml']).default('none'),
+  responseEnvelope: z.enum(['preserve', 'wrap', 'header_only']).default('preserve'),
+  cachePolicy: z.object({
+    enabled: z.boolean().default(true),
+    ttlSeconds: z.number().int().min(1).max(86400).default(60),
+    cacheMethods: z.array(z.string()).default(['GET']).optional(),
+    respectUpstreamCacheControl: z.boolean().default(true).optional(),
+  }).default({ enabled: true, ttlSeconds: 60 }),
+  timeoutMs: z.number().int().min(500).max(60000).default(30000),
+  originalCurl: z.string().optional(),
+  sampleRequest: z.unknown().optional(),
+  sampleResponse: z.unknown().optional(),
+  allowedPlans: z.array(z.string()).default(['*']),
+});
+
+

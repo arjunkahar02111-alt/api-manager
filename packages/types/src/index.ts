@@ -158,8 +158,111 @@ export interface IApiCatalog {
   };
   status: ApiCatalogStatus;
   allowedPlans: string[]; // Plan IDs or '*'
+  authConfig?: ProviderAuthConfig;
+  parameterDefinitions?: ParameterDefinition[];
+  parameterMappings?: ParameterMapping[];
+  requestBodyType?: 'none' | 'json' | 'form-urlencoded' | 'multipart' | 'text' | 'xml';
+  responseEnvelope?: 'preserve' | 'wrap' | 'header_only';
+  validationStatus?: 'PASS' | 'FAIL' | 'WARNING' | 'BLOCKED' | 'NOT_TESTED';
+  lastValidationReport?: ApiValidationReport;
+  originalCurl?: string;
+  sampleRequest?: any;
+  sampleResponse?: any;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export type ParameterLocation = 'query' | 'header' | 'path' | 'body';
+export type ParameterDataType = 'string' | 'number' | 'boolean' | 'array' | 'object';
+
+export interface ParameterDefinition {
+  name: string;
+  in: ParameterLocation;
+  type: ParameterDataType;
+  required: boolean;
+  defaultValue?: any;
+  description?: string;
+  sampleValue?: any;
+}
+
+export interface ParameterMapping {
+  clientName: string;
+  clientIn: ParameterLocation;
+  providerName: string;
+  providerIn: ParameterLocation;
+  isStatic?: boolean;
+  staticValue?: any;
+  isProviderCredential?: boolean;
+  required?: boolean;
+  defaultValue?: any;
+  transform?: 'none' | 'trim' | 'lowercase' | 'uppercase';
+}
+
+export interface ProviderAuthConfig {
+  type: 'none' | 'api_key_query' | 'api_key_header' | 'bearer_token' | 'basic_auth' | 'custom_header';
+  paramName?: string; // e.g. "key", "api_key", "X-API-Key", "Authorization"
+  encryptedCredential?: string; // AES-256-GCM encrypted secret
+  credentialPrefix?: string; // e.g. "sk_live_...ab12" for display
+  headerFormat?: string; // e.g. "Bearer {token}" or "{key}"
+  basicUsername?: string;
+}
+
+export interface CachePolicyConfig {
+  enabled: boolean;
+  ttlSeconds: number;
+  cacheMethods?: string[]; // default ['GET']
+  varyByHeaders?: string[];
+  respectUpstreamCacheControl?: boolean;
+}
+
+export interface ApiValidationReport {
+  status: 'PASS' | 'FAIL' | 'WARNING' | 'BLOCKED' | 'NOT_TESTED';
+  checkedAt: Date | string;
+  durationMs: number;
+  tests: {
+    name: string;
+    status: 'PASS' | 'FAIL' | 'WARNING' | 'SKIPPED';
+    message: string;
+    details?: any;
+  }[];
+  statusCode?: number;
+  targetUrl?: string;
+  sampleResponseSnippet?: string;
+}
+
+export interface ClientDeliveryPackage {
+  apiName: string;
+  endpointUrl: string;
+  gatewayPath: string;
+  httpMethod: string;
+  parameters: {
+    name: string;
+    in: ParameterLocation;
+    type: ParameterDataType;
+    required: boolean;
+    defaultValue?: any;
+    description?: string;
+    sampleValue?: any;
+  }[];
+  authentication: {
+    type: string;
+    header: string;
+    queryParam: string;
+    note: string;
+  };
+  caching: {
+    enabled: boolean;
+    ttlSeconds: number;
+    bypassHeader: string;
+  };
+  sampleRequests: {
+    curl: string;
+    javascriptFetch: string;
+    nodejs: string;
+    pythonRequests: string;
+    phpCurl: string;
+  };
+  sampleResponse?: any;
 }
 
 export interface ICustomerApiPermission {

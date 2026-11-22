@@ -3,10 +3,13 @@ import { requireAdminAuth, AuthenticatedAdminRequest } from '../../middleware/ad
 import { CatalogService } from '../../services/catalog.service.js';
 import { CreateApiCatalogSchema } from '@arjun/schemas';
 import { sendSuccess } from '@arjun/shared';
+import importerRoutes from './importer.routes.js';
 
 const router = Router();
 
 router.use(requireAdminAuth);
+router.use('/import', importerRoutes);
+router.use('/', importerRoutes);
 
 router.get('/', async (req, res, next) => {
   try {

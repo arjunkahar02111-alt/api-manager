@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../../services/api';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
+import { UniversalApiImporterModal } from '../../components/UniversalApiImporterModal';
+import { ClientPackageModal } from '../../components/ClientPackageModal';
 import {
   Zap,
   Copy,
@@ -16,6 +18,9 @@ import {
   AlertCircle,
   Loader2,
   Key,
+  Sparkles,
+  Package,
+  RotateCw,
 } from 'lucide-react';
 
 const getPublicGatewayBaseUrl = () => {
@@ -36,6 +41,10 @@ export const AdminApis: React.FC = () => {
   const [apis, setApis] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showImporterModal, setShowImporterModal] = useState(false);
+  const [selectedPackageApiId, setSelectedPackageApiId] = useState<string | null>(null);
+  const [purgingId, setPurgingId] = useState<string | null>(null);
+  const [purgeNotification, setPurgeNotification] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<any | null>(null);
 
@@ -152,6 +161,16 @@ export const AdminApis: React.FC = () => {
     fetchApis();
   };
 
+  const handlePurgeCache = async (id: string, name: string) => {
+    setPurgingId(id);
+    const res = await apiRequest(`/api/v1/admin/apis/${id}/cache/purge`, { method: 'POST' }, 'admin');
+    setPurgingId(null);
+    if (res.success) {
+      setPurgeNotification(`Cache purged for '${name}' (${res.data?.purgedCount || 0} entries removed)`);
+      setTimeout(() => setPurgeNotification(null), 3000);
+    }
+  };
+
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedUrl(id);
@@ -177,16 +196,25 @@ export const AdminApis: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setShowAddModal(true);
-            setFormError(null);
-          }}
-          className="self-start sm:self-auto px-4 py-2 bg-[#121212] border-2 border-white hover:bg-white hover:text-black text-white text-xs font-bold uppercase tracking-widest transition-colors font-mono flex items-center gap-2 rounded-none"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          [ MANUAL CONFIG ]
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setShowImporterModal(true)}
+            className="px-4 py-2 bg-[#EF4444] border-2 border-[#EF4444] hover:bg-[#DC2626] text-white text-xs font-bold uppercase tracking-widest transition-colors font-mono flex items-center gap-2 rounded-none"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            [ ⚡ AUTOMATED IMPORTER & MAPPER ]
+          </button>
+          <button
+            onClick={() => {
+              setShowAddModal(true);
+              setFormError(null);
+            }}
+            className="px-4 py-2 bg-[#121212] border-2 border-white hover:bg-white hover:text-black text-white text-xs font-bold uppercase tracking-widest transition-colors font-mono flex items-center gap-2 rounded-none"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            [ MANUAL CONFIG ]
+          </button>
+        </div>
       </div>
 
       {/* 1-CLICK INSTANT AUTO-CONNECTOR (VOICEBOX ELEVATED CARD) */}
@@ -308,6 +336,22 @@ export const AdminApis: React.FC = () => {
           </div>
         </form>
       </div>
+
+      {/* Purge Notification */}
+      {purgeNotification && (
+        <div className="p-4 bg-[#052E16] border-2 border-[#16A34A] text-white font-mono text-xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 text-[#22C55E]" />
+            <span className="font-bold">{purgeNotification}</span>
+          </div>
+          <button
+            onClick={() => setPurgeNotification(null)}
+            className="text-xs uppercase font-bold border border-current px-2 py-0.5 hover:bg-white hover:text-black transition-colors"
+          >
+            DISMISS
+          </button>
+        </div>
+      )}
 
       {/* Connectivity Test Alert */}
       {testResult && (
@@ -435,6 +479,24 @@ export const AdminApis: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => setSelectedPackageApiId(api._id)}
+                            title="View Client Distribution Package"
+                            className="px-2.5 py-1 bg-[#121212] border border-white hover:bg-white hover:text-black text-white text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors rounded-none"
+                          >
+                            <Package className="w-3 h-3 text-cyan-400" />
+                            Package
+                          </button>
+                          {api.cachePolicy?.enabled && (
+                            <button
+                              onClick={() => handlePurgeCache(api._id, api.name)}
+                              disabled={purgingId === api._id}
+                              title="Purge Response Cache"
+                              className="p-1.5 border border-[#333333] hover:border-amber-400 text-amber-400 transition-colors disabled:opacity-40"
+                            >
+                              <RotateCw className={`w-3.5 h-3.5 ${purgingId === api._id ? 'animate-spin' : ''}`} />
+                            </button>
+                          )}
                           <button
                             onClick={() => navigate('/admin/customers')}
                             className="px-3 py-1 bg-white text-black hover:bg-[#EF4444] hover:text-white text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors rounded-none"
@@ -578,6 +640,20 @@ export const AdminApis: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Universal Automated API Importer Modal */}
+      <UniversalApiImporterModal
+        isOpen={showImporterModal}
+        onClose={() => setShowImporterModal(false)}
+        onSuccess={() => fetchApis()}
+      />
+
+      {/* Client Distribution Package Modal */}
+      <ClientPackageModal
+        apiId={selectedPackageApiId}
+        isOpen={Boolean(selectedPackageApiId)}
+        onClose={() => setSelectedPackageApiId(null)}
+      />
     </div>
   );
 };

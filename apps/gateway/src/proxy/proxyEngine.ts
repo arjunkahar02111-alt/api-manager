@@ -4,7 +4,9 @@ import zlib from 'node:zlib';
 import { decompress as decompressZstd } from 'fzstd';
 import { RouteConfig } from '../routing/routeResolver.js';
 import { validateUpstreamUrl } from '../security/ssrfGuard.js';
-import { UpstreamError } from '@arjun/shared';
+import { UpstreamError, decryptSecret } from '@arjun/shared';
+import { ResponseCacheManager } from '../cache/responseCacheManager.js';
+import type { Redis } from 'ioredis';
 
 // Hop-by-hop and transport headers that must never be forwarded
 const HOP_BY_HOP_HEADERS = new Set([
@@ -46,7 +48,7 @@ function decompressBuffer(buffer: Buffer, encodingHeader?: string | string[]): B
   const enc = Array.isArray(encodingHeader)
     ? encodingHeader.join(' ').toLowerCase()
     : String(encodingHeader || '').toLowerCase();
-  
+
   // 1. Explicit Zstandard (Chrome 123+ & Cloudflare default)
   if (enc.includes('zstd')) {
     try {
@@ -86,7 +88,14 @@ function decompressBuffer(buffer: Buffer, encodingHeader?: string | string[]): B
 
   // 5. Universal Auto-Detection: If payload is compressed binary (does not start with valid JSON '{' or '[')
   const first = buffer[0];
-  const isPlainJsonOrText = first === 0x7b || first === 0x5b || first === 0x20 || first === 0x0a || first === 0x0d || first === 0x09 || first === 0x3c;
+  const isPlainJsonOrText =
+    first === 0x7b ||
+    first === 0x5b ||
+    first === 0x20 ||
+    first === 0x0a ||
+    first === 0x0d ||
+    first === 0x09 ||
+    first === 0x3c;
   if (!isPlainJsonOrText) {
     try {
       return Buffer.from(decompressZstd(new Uint8Array(buffer)));
@@ -136,21 +145,67 @@ export class ProxyEngine {
    * Proxies validated customer request to administrator-configured upstream service.
    * Supports ALL HTTP methods, ALL request body formats (JSON, Form URL-encoded, Multipart, Text, XML, Binary),
    * and ALL response types (JSON, Images, PDFs, Audio, Video, CSV, Streaming).
+   * Features: Intelligent Response Caching, Universal Parameter Mapping & Server-Side Credential Injection.
    */
   static async forwardRequest(
     req: Request,
     res: Response,
     route: RouteConfig,
     clientMeta?: ClientResponseMetadata,
-    subPath?: string
+    subPath?: string,
+    redis?: Redis
   ): Promise<ProxyResult> {
     const start = Date.now();
 
-    // 1. Construct destination URL: upstreamBaseUrl + upstreamPath + subPath + merged query parameters
+    // 0. Cache Check for eligible requests (GET by default)
+    const cacheConfig = route.cachePolicy;
+    const isCachingEligible =
+      cacheConfig?.enabled &&
+      (cacheConfig.cacheMethods || ['GET']).includes(req.method.toUpperCase());
+
+    const clientBypassCache =
+      req.headers['cache-control']?.includes('no-cache') ||
+      req.headers['x-cache-bypass'] === 'true';
+
+    if (isCachingEligible && !clientBypassCache) {
+      const cached = await ResponseCacheManager.get(
+        redis,
+        route.slug,
+        req.method,
+        req.path,
+        req.query,
+        req.body
+      );
+
+      if (cached) {
+        const duration = Date.now() - start;
+        res.setHeader('X-Cache', 'HIT');
+        res.setHeader('X-Cache-TTL', String(cached.ttlRemaining));
+        res.setHeader('X-Developer', clientMeta?.developerTag || 'arjunkahar');
+        if (clientMeta?.reqLeft !== undefined) res.setHeader('X-RateLimit-Remaining', String(clientMeta.reqLeft));
+        if (clientMeta?.reqTotal !== undefined) res.setHeader('X-RateLimit-Limit', String(clientMeta.reqTotal));
+        if (clientMeta?.expiresAt) res.setHeader('X-Expiry-Date', formatExpiryDate(clientMeta.expiresAt));
+        res.setHeader('X-Response-Time', `${duration}ms`);
+
+        for (const [k, v] of Object.entries(cached.headers)) {
+          if (!res.getHeader(k)) res.setHeader(k, v);
+        }
+
+        res.status(cached.statusCode).send(cached.body);
+        return {
+          statusCode: cached.statusCode,
+          durationMs: duration,
+          requestBytes: 0,
+          responseBytes: Buffer.isBuffer(cached.body) ? cached.body.length : Buffer.byteLength(String(cached.body)),
+          upstreamStatus: cached.statusCode,
+        };
+      }
+    }
+
+    // 1. Construct destination URL: upstreamBaseUrl + upstreamPath + subPath + mapped query parameters
     const baseUrl = route.upstreamBaseUrl.replace(/\/$/, '');
     let upstreamPath = route.upstreamPath || '';
 
-    // Extract any existing query parameters from the upstreamPath
     let queryFromUpstream = '';
     const qIdx = upstreamPath.indexOf('?');
     if (qIdx !== -1) {
@@ -158,7 +213,6 @@ export class ProxyEngine {
       upstreamPath = upstreamPath.substring(0, qIdx);
     }
 
-    // Append subPath if client requested a sub-resource
     if (subPath) {
       const cleanSub = subPath.startsWith('/') ? subPath : `/${subPath}`;
       upstreamPath = upstreamPath ? `${upstreamPath.replace(/\/$/, '')}${cleanSub}` : cleanSub;
@@ -170,7 +224,7 @@ export class ProxyEngine {
 
     const urlObj = new URL(`${baseUrl}${upstreamPath}`);
 
-    // Re-apply query parameters from upstream configuration
+    // Re-apply static query parameters from upstream path configuration
     if (queryFromUpstream) {
       const usp = new URLSearchParams(queryFromUpstream);
       for (const [k, v] of usp.entries()) {
@@ -178,27 +232,179 @@ export class ProxyEngine {
       }
     }
 
-    // Merge incoming query parameters from client
+    // Prepare headers container
+    const forwardedHeaders: Record<string, string> = {};
+    for (const [key, value] of Object.entries(req.headers)) {
+      const lower = key.toLowerCase();
+      if (!HOP_BY_HOP_HEADERS.has(lower) && typeof value === 'string') {
+        forwardedHeaders[key] = value;
+      }
+    }
+    forwardedHeaders['accept-encoding'] = 'gzip, deflate, br, zstd';
+    if (!forwardedHeaders['user-agent']) {
+      forwardedHeaders['user-agent'] =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36';
+    }
+    forwardedHeaders['x-forwarded-for'] = req.ip || req.socket.remoteAddress || '127.0.0.1';
+    forwardedHeaders['x-forwarded-proto'] = req.protocol;
+    forwardedHeaders['x-gateway-id'] = 'arjun-api-manager';
+
+    // Parse incoming client query parameters
     const incomingQueryIdx = req.originalUrl.indexOf('?');
-    if (incomingQueryIdx !== -1) {
-      const incomingParams = new URLSearchParams(req.originalUrl.substring(incomingQueryIdx));
-      for (const [key, value] of incomingParams.entries()) {
-        const lowerKey = key.toLowerCase();
-        // If this parameter is the client gateway auth key (e.g. ?key=arjun_live_... or ?api_key=...),
-        // do not forward the internal gateway key or overwrite the upstream API's own secret key
-        if (
-          lowerKey === 'api_key' ||
-          lowerKey === 'apikey' ||
-          lowerKey === 'token' ||
-          (lowerKey === 'key' && (value.startsWith('arjun_') || urlObj.searchParams.has('key')))
-        ) {
-          continue;
+    const incomingClientParams = new URLSearchParams(
+      incomingQueryIdx !== -1 ? req.originalUrl.substring(incomingQueryIdx) : ''
+    );
+
+    // Parse incoming request body if JSON
+    let parsedJsonBody: any = undefined;
+    let isJsonRequestBody = false;
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      const cType = String(req.headers['content-type'] || '').toLowerCase();
+      if (cType.includes('application/json') && req.body) {
+        try {
+          const rawStr = Buffer.isBuffer(req.body) ? req.body.toString('utf-8') : String(req.body);
+          if (rawStr.trim().startsWith('{') || rawStr.trim().startsWith('[')) {
+            parsedJsonBody = JSON.parse(rawStr);
+            isJsonRequestBody = typeof parsedJsonBody === 'object' && parsedJsonBody !== null;
+          }
+        } catch {}
+      }
+    }
+
+    // 2. Decrypt Provider Secret if configured
+    let decryptedSecret: string | undefined = undefined;
+    if (route.authConfig?.encryptedCredential) {
+      try {
+        decryptedSecret = decryptSecret(route.authConfig.encryptedCredential);
+      } catch (err: any) {
+        console.warn('[ProxyEngine] Failed to decrypt provider credential:', err.message);
+      }
+    }
+
+    // 3. Universal Parameter Mapping Engine
+    const parameterMappings = route.parameterMappings || [];
+    const mappedClientQueryKeys = new Set<string>();
+
+    for (const mapping of parameterMappings) {
+      if (mapping.clientIn === 'query') {
+        mappedClientQueryKeys.add(mapping.clientName);
+      }
+
+      // Case A: Server-Side Injected Provider Credential
+      if (mapping.isProviderCredential) {
+        const secretVal = decryptedSecret || mapping.staticValue || '';
+        if (mapping.providerIn === 'query') {
+          urlObj.searchParams.set(mapping.providerName, String(secretVal));
+        } else if (mapping.providerIn === 'header') {
+          forwardedHeaders[mapping.providerName.toLowerCase()] = String(secretVal);
+        } else if (mapping.providerIn === 'body' && isJsonRequestBody) {
+          parsedJsonBody[mapping.providerName] = secretVal;
         }
+        continue;
+      }
+
+      // Case B: Static Server Parameter
+      if (mapping.isStatic) {
+        const staticVal = mapping.staticValue;
+        if (mapping.providerIn === 'query') {
+          urlObj.searchParams.set(mapping.providerName, String(staticVal ?? ''));
+        } else if (mapping.providerIn === 'header') {
+          forwardedHeaders[mapping.providerName.toLowerCase()] = String(staticVal ?? '');
+        } else if (mapping.providerIn === 'body' && isJsonRequestBody) {
+          parsedJsonBody[mapping.providerName] = staticVal;
+        }
+        continue;
+      }
+
+      // Case C: Client Parameter -> Provider Parameter Mapping
+      let clientValue: any = undefined;
+
+      if (mapping.clientIn === 'query') {
+        if (incomingClientParams.has(mapping.clientName)) {
+          clientValue = incomingClientParams.get(mapping.clientName);
+        }
+      } else if (mapping.clientIn === 'header') {
+        clientValue = req.headers[mapping.clientName.toLowerCase()];
+      } else if (mapping.clientIn === 'body') {
+        if (isJsonRequestBody && parsedJsonBody[mapping.clientName] !== undefined) {
+          clientValue = parsedJsonBody[mapping.clientName];
+        }
+      }
+
+      // Check required validation
+      if (clientValue === undefined) {
+        if (mapping.defaultValue !== undefined) {
+          clientValue = mapping.defaultValue;
+        } else if (mapping.required) {
+          res.status(400).json({
+            success: false,
+            error: {
+              code: 'MISSING_REQUIRED_PARAMETER',
+              message: `Required parameter '${mapping.clientName}' is missing from request ${mapping.clientIn}.`,
+            },
+          });
+          return {
+            statusCode: 400,
+            durationMs: Date.now() - start,
+            requestBytes: 0,
+            responseBytes: 0,
+            upstreamStatus: 400,
+          };
+        }
+      }
+
+      // Preserve valid falsy values (0, false, null, empty string)
+      if (clientValue !== undefined) {
+        if (mapping.transform === 'trim' && typeof clientValue === 'string') clientValue = clientValue.trim();
+        if (mapping.transform === 'lowercase' && typeof clientValue === 'string') clientValue = clientValue.toLowerCase();
+        if (mapping.transform === 'uppercase' && typeof clientValue === 'string') clientValue = clientValue.toUpperCase();
+
+        if (mapping.providerIn === 'query') {
+          urlObj.searchParams.set(mapping.providerName, String(clientValue));
+        } else if (mapping.providerIn === 'header') {
+          forwardedHeaders[mapping.providerName.toLowerCase()] = String(clientValue);
+        } else if (mapping.providerIn === 'body' && isJsonRequestBody) {
+          parsedJsonBody[mapping.providerName] = clientValue;
+        }
+      }
+    }
+
+    // 4. Forward remaining client query parameters (excluding internal gateway keys)
+    for (const [key, value] of incomingClientParams.entries()) {
+      const lowerKey = key.toLowerCase();
+      // Never forward internal Karvion auth tokens to the external provider
+      if (
+        lowerKey === 'api_key' ||
+        lowerKey === 'apikey' ||
+        (lowerKey === 'key' && (value.startsWith('arjun_') || urlObj.searchParams.has('key'))) ||
+        (lowerKey === 'token' && value.startsWith('arjun_'))
+      ) {
+        continue;
+      }
+
+      // If already explicitly mapped, do not duplicate unless permitted
+      if (!mappedClientQueryKeys.has(key) && !urlObj.searchParams.has(key)) {
         urlObj.searchParams.set(key, value);
       }
     }
 
-    // Auto-map vehicle search parameters (vehicle_number, v_num, etc.) to query if not explicitly set
+    // 5. Inject Provider AuthConfig if not handled via parameter mappings
+    if (route.authConfig && route.authConfig.type !== 'none' && decryptedSecret) {
+      const { type, paramName } = route.authConfig;
+      if (type === 'api_key_query') {
+        urlObj.searchParams.set(paramName || 'key', decryptedSecret);
+      } else if (type === 'api_key_header') {
+        forwardedHeaders[(paramName || 'x-api-key').toLowerCase()] = decryptedSecret;
+      } else if (type === 'bearer_token') {
+        forwardedHeaders['authorization'] = `Bearer ${decryptedSecret}`;
+      } else if (type === 'basic_auth') {
+        forwardedHeaders['authorization'] = `Basic ${Buffer.from(decryptedSecret).toString('base64')}`;
+      } else if (type === 'custom_header' && paramName) {
+        forwardedHeaders[paramName.toLowerCase()] = decryptedSecret;
+      }
+    }
+
+    // Auto-map vehicle search parameters for resilient backward compatibility
     if (!urlObj.searchParams.has('query')) {
       const altParam =
         urlObj.searchParams.get('vehicle_number') ||
@@ -210,35 +416,23 @@ export class ProxyEngine {
         urlObj.searchParams.set('query', altParam);
       }
     }
+
     const targetUrl = urlObj.toString();
 
-    // 2. Enforce strict anti-SSRF validation
+    // 6. Strict Anti-SSRF Validation
     await validateUpstreamUrl(targetUrl);
 
-    // 3. Sanitize and filter forwarded headers
-    const forwardedHeaders: Record<string, string> = {};
-    for (const [key, value] of Object.entries(req.headers)) {
-      const lower = key.toLowerCase();
-      if (!HOP_BY_HOP_HEADERS.has(lower) && typeof value === 'string') {
-        forwardedHeaders[key] = value;
-      }
-    }
-    // Universal compression support: tell upstream we accept all modern formats
-    forwardedHeaders['accept-encoding'] = 'gzip, deflate, br, zstd';
-
-    if (!forwardedHeaders['user-agent']) {
-      forwardedHeaders['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36';
-    }
-    forwardedHeaders['x-forwarded-for'] = req.ip || req.socket.remoteAddress || '127.0.0.1';
-    forwardedHeaders['x-forwarded-proto'] = req.protocol;
-    forwardedHeaders['x-gateway-id'] = 'arjun-api-manager';
-
-    // 4. Prepare universal request payload (JSON, Form URL-encoded, Multipart, Text, XML, Binary)
+    // 7. Prepare universal request payload
     let requestBody: Buffer | undefined = undefined;
     let requestBytes = 0;
 
     if (req.method !== 'GET' && req.method !== 'HEAD') {
-      if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+      if (isJsonRequestBody && parsedJsonBody !== undefined) {
+        const updatedJsonStr = JSON.stringify(parsedJsonBody);
+        requestBody = Buffer.from(updatedJsonStr);
+        requestBytes = requestBody.length;
+        forwardedHeaders['content-type'] = 'application/json';
+      } else if (Buffer.isBuffer(req.body) && req.body.length > 0) {
         requestBody = req.body;
         requestBytes = req.body.length;
         if (typeof req.headers['content-type'] === 'string') {
@@ -254,7 +448,10 @@ export class ProxyEngine {
         const contentType = typeof req.headers['content-type'] === 'string' ? req.headers['content-type'].toLowerCase() : '';
         if (contentType.includes('application/x-www-form-urlencoded')) {
           requestBody = Buffer.from(new URLSearchParams(req.body as any).toString());
-          forwardedHeaders['content-type'] = typeof req.headers['content-type'] === 'string' ? req.headers['content-type'] : 'application/x-www-form-urlencoded';
+          forwardedHeaders['content-type'] =
+            typeof req.headers['content-type'] === 'string'
+              ? req.headers['content-type']
+              : 'application/x-www-form-urlencoded';
         } else {
           requestBody = Buffer.from(JSON.stringify(req.body));
           forwardedHeaders['content-type'] = 'application/json';
@@ -300,20 +497,28 @@ export class ProxyEngine {
       clearTimeout(timeoutId);
 
       const rawBuffer = Buffer.concat(chunks);
-      const contentEncoding = (headers['content-encoding'] || headers['Content-Encoding']) as string | string[] | undefined;
+      const contentEncoding = (headers['content-encoding'] || headers['Content-Encoding']) as
+        | string
+        | string[]
+        | undefined;
       const decompressedBuffer = decompressBuffer(rawBuffer, contentEncoding);
-      console.log(`[ProxyEngine] Decompressed upstream response (${rawBuffer.length} raw bytes -> ${decompressedBuffer.length} bytes)`);
 
       const upstreamContentType = String(headers['content-type'] || res.getHeader('content-type') || '').toLowerCase();
-      const isJson = upstreamContentType.includes('application/json') || upstreamContentType.includes('+json') || (decompressedBuffer.length > 0 && (decompressedBuffer[0] === 0x7b || decompressedBuffer[0] === 0x5b));
+      const isJson =
+        upstreamContentType.includes('application/json') ||
+        upstreamContentType.includes('+json') ||
+        (decompressedBuffer.length > 0 &&
+          (decompressedBuffer[0] === 0x7b || decompressedBuffer[0] === 0x5b));
 
-      // Always inject standard metadata headers on every response (JSON, binary, streams, HEAD)
       const duration = Date.now() - start;
+
+      // Always inject standard metadata in HTTP response headers
       res.setHeader('X-Developer', clientMeta?.developerTag || 'arjunkahar');
       if (clientMeta?.reqLeft !== undefined) res.setHeader('X-RateLimit-Remaining', String(clientMeta.reqLeft));
       if (clientMeta?.reqTotal !== undefined) res.setHeader('X-RateLimit-Limit', String(clientMeta.reqTotal));
       if (clientMeta?.expiresAt) res.setHeader('X-Expiry-Date', formatExpiryDate(clientMeta.expiresAt));
       res.setHeader('X-Response-Time', `${duration}ms`);
+      res.setHeader('X-Cache', 'MISS');
       if (clientMeta?.announcement) {
         res.setHeader('X-Karvion-Announcement', clientMeta.announcement.id);
         if (clientMeta.announcement.acknowledgment_required) {
@@ -324,45 +529,49 @@ export class ProxyEngine {
 
       let finalBody: Buffer | string = decompressedBuffer;
 
-      if (isJson) {
+      // Response Envelope Handling:
+      // If 'preserve' (default for imported APIs): do NOT mutate the JSON body; original upstream keys are 100% untouched.
+      // If 'wrap': inject metadata directly into the JSON body (used for legacy endpoints).
+      const shouldWrapEnvelope = route.responseEnvelope === 'wrap';
+
+      if (isJson && shouldWrapEnvelope) {
         try {
           const text = decompressedBuffer.toString('utf-8');
           const json = JSON.parse(text);
           if (json && typeof json === 'object' && !Array.isArray(json)) {
-            // Replace or set developer branding (customizable per user, default arjunkahar)
             json.developer = clientMeta?.developerTag || 'arjunkahar';
-
-            // Inject dynamic announcement if active and applicable
-            if (clientMeta?.announcement) {
-              json.announcement = clientMeta.announcement;
-            }
-
-            // Inject customer quota stats
-            if (clientMeta?.reqLeft !== undefined) {
-              json.req_left = clientMeta.reqLeft;
-            }
-            if (clientMeta?.reqTotal !== undefined) {
-              json.req_total = clientMeta.reqTotal;
-            }
-            if (clientMeta?.expiresAt) {
-              json.expiry = formatExpiryDate(clientMeta.expiresAt);
-            }
-
-            // Inject duration and timing
+            if (clientMeta?.announcement) json.announcement = clientMeta.announcement;
+            if (clientMeta?.reqLeft !== undefined) json.req_left = clientMeta.reqLeft;
+            if (clientMeta?.reqTotal !== undefined) json.req_total = clientMeta.reqTotal;
+            if (clientMeta?.expiresAt) json.expiry = formatExpiryDate(clientMeta.expiresAt);
             json.response_time = `${duration}ms`;
             json.response_time_seconds = Number((duration / 1000).toFixed(2));
-
             finalBody = JSON.stringify(json, null, 2);
             res.setHeader('content-type', 'application/json; charset=utf-8');
-          } else {
-            finalBody = text;
           }
         } catch {
           finalBody = decompressedBuffer.toString('utf-8');
         }
       }
 
-      responseBytes = Buffer.isBuffer(finalBody) ? finalBody.length : Buffer.byteLength(finalBody);
+      responseBytes = Buffer.isBuffer(finalBody) ? finalBody.length : Buffer.byteLength(String(finalBody));
+
+      // Save to response cache if caching is active
+      if (isCachingEligible && statusCode >= 200 && statusCode < 300) {
+        const ttl = cacheConfig?.ttlSeconds || 60;
+        await ResponseCacheManager.set(
+          redis,
+          route.slug,
+          req.method,
+          req.path,
+          req.query,
+          req.body,
+          finalBody,
+          headers,
+          statusCode,
+          ttl
+        );
+      }
 
       // Check max response byte limit
       if (route.maxResponseBytes && responseBytes > route.maxResponseBytes) {

@@ -26,7 +26,42 @@ const ApiCatalogSchema = new Schema<ApiCatalogDocument>(
     cachePolicy: {
       enabled: { type: Boolean, default: false },
       ttlSeconds: { type: Number, default: 60 },
+      cacheMethods: { type: [String], default: ['GET'] },
+      respectUpstreamCacheControl: { type: Boolean, default: true },
     },
+    authConfig: {
+      type: {
+        type: String,
+        enum: ['none', 'api_key_query', 'api_key_header', 'bearer_token', 'basic_auth', 'custom_header'],
+        default: 'none',
+      },
+      paramName: { type: String },
+      encryptedCredential: { type: String },
+      credentialPrefix: { type: String },
+      headerFormat: { type: String },
+      basicUsername: { type: String },
+    },
+    parameterDefinitions: { type: Schema.Types.Mixed, default: [] },
+    parameterMappings: { type: Schema.Types.Mixed, default: [] },
+    requestBodyType: {
+      type: String,
+      enum: ['none', 'json', 'form-urlencoded', 'multipart', 'text', 'xml'],
+      default: 'none',
+    },
+    responseEnvelope: {
+      type: String,
+      enum: ['preserve', 'wrap', 'header_only'],
+      default: 'preserve',
+    },
+    validationStatus: {
+      type: String,
+      enum: ['PASS', 'FAIL', 'WARNING', 'BLOCKED', 'NOT_TESTED'],
+      default: 'NOT_TESTED',
+    },
+    lastValidationReport: { type: Schema.Types.Mixed },
+    originalCurl: { type: String },
+    sampleRequest: { type: Schema.Types.Mixed },
+    sampleResponse: { type: Schema.Types.Mixed },
     authenticationRequired: { type: Boolean, default: true },
     allowedHeaders: { type: [String], default: ['Content-Type', 'Accept', 'User-Agent'] },
     healthCheck: {

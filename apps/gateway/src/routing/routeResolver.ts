@@ -1,6 +1,13 @@
 import { Redis } from 'ioredis';
 import mongoose from 'mongoose';
 
+import type {
+  ProviderAuthConfig,
+  ParameterMapping,
+  ParameterDefinition,
+  CachePolicyConfig,
+} from '@arjun/types';
+
 export interface RouteConfig {
   id: string;
   name: string;
@@ -14,7 +21,12 @@ export interface RouteConfig {
   maxRequestBytes: number;
   maxResponseBytes: number;
   status: 'active' | 'disabled' | 'maintenance';
-  cachePolicy?: { enabled: boolean; ttlSeconds: number };
+  cachePolicy?: CachePolicyConfig;
+  authConfig?: ProviderAuthConfig;
+  parameterMappings?: ParameterMapping[];
+  parameterDefinitions?: ParameterDefinition[];
+  requestBodyType?: string;
+  responseEnvelope?: 'preserve' | 'wrap' | 'header_only';
 }
 
 export interface ResolvedRoute {
@@ -83,6 +95,11 @@ export class RouteResolver {
           maxResponseBytes: api.maxResponseBytes || 10485760,
           status: api.status,
           cachePolicy: api.cachePolicy,
+          authConfig: api.authConfig,
+          parameterMappings: api.parameterMappings,
+          parameterDefinitions: api.parameterDefinitions,
+          requestBodyType: api.requestBodyType,
+          responseEnvelope: api.responseEnvelope || 'preserve',
         };
 
         await this.redis.set(cacheKey, JSON.stringify(routeConfig), 'EX', 60);
